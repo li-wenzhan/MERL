@@ -1,0 +1,7 @@
+/checkpoints
+*/model_ckpt
+/tmp_files
+/outputs
+__pycache__
+/.vscode
+/modules/ctrl_world/dataset_example

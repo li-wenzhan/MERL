@@ -1,0 +1,19 @@
+# ! Reader checklist:
+# ! 1) Set libero_pro_root to your local LIBERO_PRO clone root.
+# ! 2) bddl/init/script/OOD YAML paths are derived automatically at runtime.
+libero_pro_root: "/mnt/afs/task3_2/L202500276_lwz/benchmark/LIBERO-PRO" # ! todo: set to your local LIBERO_PRO clone root
+
+# todo: change the perturbation type (single)
+#! 暂时缺少 env 的，要自己生成
+use_environment: true
+use_swap: false
+use_object: false
+use_language: false
+use_task: false
+
+perturbation_mapping:
+  use_environment: env
+  use_swap: swap
+  use_object: object
+  use_language: lan
+  use_task: task

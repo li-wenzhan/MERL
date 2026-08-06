@@ -1,0 +1,35 @@
+wm_config_path: configs/wm_online_config.py
+
+# Set these three paths on the robot / inference server.
+svd_model_path: /mnt/afs/task3_2/L202500276_lwz/models/stable-video-diffusion-img2vid
+clip_model_path: /mnt/afs/task3_2/L202500276_lwz/models/clip-vit-base-patch32
+ckpt_path: /mnt/afs/task3_2/L202500276_lwz/models/ctrl_world_ckpts/checkpoint-10000.pt
+load_from_ckpt: true
+
+device: cuda:0
+dtype: torch.bfloat16
+
+width: 320
+height: 192
+num_history: 8
+num_future_frames: 8
+num_inference_steps: 30
+decode_chunk_size: 8
+guidance_scale: 2.0
+fps: 4
+output_fps: 4
+motion_bucket_id: 127
+frame_level_cond: true
+his_cond_zero: false
+reward_threshold: 0.5
+
+# action_input_range=model means actions are already in Ctrl-World model space [-1, 1].
+# Use zero_one only when the action log is in [0, 1] and should be linearly mapped.
+action_dim: 7
+action_input_range: model
+binarize_gripper: true
+invert_gripper: false
+zero_history_actions_if_missing: true
+
+save_input_history: true
+

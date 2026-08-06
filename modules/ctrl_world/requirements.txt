@@ -1,0 +1,40 @@
+diffusers==0.33.0  #? min: 0.33.0; default: 0.34.0; vla: 0.30.3
+# transformers==4.57.3  #? error: 4.48.1
+# torch==2.7.1  # min: 2.4.0
+# torchvision
+mediapy
+wandb
+swanlab
+accelerate
+tqdm
+# numpy
+# Keep NumPy 1.x for tensorflow-cpu and LIBERO/OpenVLA compatibility.
+numpy==1.26.4
+decord
+einops
+scipy
+pandas
+omegaconf
+loguru
+ffmpeg
+
+h5py
+gym>=0.23,<0.26
+bddl
+easydict
+cloudpickle
+opencv-python>=4.8,<4.12
+# LIBERO-PRO imports robosuite.environments.manipulation.single_arm_env.
+robosuite==1.4.1
+mujoco>=2.3.7,<3.0
+webdataset
+
+# for validate metrics
+lpips
+torchmetrics
+ftfy
+clip
+
+# apt install ffmpeg
+# cd opensora
+# pip install -v -e .

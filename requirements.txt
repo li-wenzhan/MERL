@@ -1,0 +1,84 @@
+# Install order:
+# 1) Install a CUDA-matched torch / torchvision / torchaudio build manually.
+#    OpenVLA / OpenVLA-OFT imports torchvision directly, so do not skip it.
+# 2) Install flash-attn manually after torch: `pip install flash-attn --no-build-isolation`.
+# 3) Clone LIBERO_PRO separately and set `libero_pro_root` in configs/evaluation_config.yaml; `PYTHONPATH` is only an optional fallback now.
+# 4) Then install the remaining packages from this file.
+
+# Core training / distributed runtime
+colossalai
+deepspeed
+ray[default]
+hydra-core
+omegaconf
+tensordict
+codetiming
+
+# Model / tokenizer / LoRA / acceleration
+transformers>=4.48,<4.58
+huggingface-hub>=0.34.0,<1.0
+peft
+accelerate
+einops
+
+# OpenVLA / OpenVLA-OFT direct Python imports
+timm>=0.9.10,<1.0
+tokenizers
+json-numpy
+safetensors
+sentencepiece
+datasets
+tqdm
+
+# Numeric / storage / serialization
+# Keep NumPy 1.x: tensorflow-cpu and the OpenVLA/LIBERO stack are not NumPy-2 clean.
+numpy==1.26.4
+scipy
+pandas
+h5py
+pyarrow
+jsonlines
+pyyaml
+sympy
+
+# Logging / experiment tracking
+wandb
+swanlab
+loguru
+tensorboard
+
+# Video / image / rollout / simulation helpers
+opencv-python>=4.8,<4.12
+Pillow
+imageio
+imageio-ffmpeg
+mediapy
+decord
+av
+webdataset
+ffmpeg-python
+gym>=0.23,<0.26
+gymnasium
+bddl
+easydict
+cloudpickle
+# LIBERO-PRO imports robosuite.environments.manipulation.single_arm_env.
+robosuite==1.4.1
+mujoco>=2.3.7,<3.0
+robomimic
+
+# World-model training / evaluation
+diffusers==0.33.0
+lpips
+torchmetrics
+pytorch-fid
+scikit-image
+ftfy
+tensorflow-cpu>=2.15,<2.17
+# git+https://github.com/openai/CLIP.git
+
+# Optional and not required for the default MERL / MBRL / MFRL workflow:
+# vllm
+# gradio
+# ipykernel
+# ipywidgets

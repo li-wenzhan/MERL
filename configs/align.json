@@ -1,0 +1,31 @@
+{
+  "env_vars": {
+    "NCCL_DEBUG": "WARN",
+    "RAY_memory_monitor_refresh_ms": "0",
+    "VLLM_ATTENTION_BACKEND": "XFORMERS",
+    "PYTORCH_CUDA_ALLOC_CONF": "max_split_size_mb:128",
+    "TORCH_DISTRIBUTED_DEBUG": "OFF",
+    "TOKENIZERS_PARALLELISM": "true",
+    "WANDB_API_KEY": "86afa5b168a8fbf4a1dfd98145f0c5d133ca103b",
+    "DISPLAY": ":99",
+    "MUJOCO_GL": "glx",
+    "PYOPENGL_PLATFORM": "glx",
+    "MERL_XVFB_DISPLAY_MODE": "shared",
+    "MERL_XVFB_BASE_DISPLAY": "99",
+    "MERL_ENV_MP_START_METHOD": "spawn",
+    "MERL_LIBERO_ENV_INIT_LOCK_ENABLE": "auto",
+    "MERL_LIBERO_ENV_INIT_LOCK": "/tmp/merl_libero_glx_env_init.lock",
+    "MERL_LIBERO_ENV_INIT_LOCK_TIMEOUT_S": "300",
+    "MERL_LIBERO_ENV_INIT_LOCK_SCOPE": "global",
+    "MERL_LIBERO_ENV_INIT_MAX_RETRY": "1",
+    "MERL_LIBERO_ENV_PARENT_MAX_RETRY": "1",
+    "MERL_LIBERO_ENV_SERVICE_ENABLE": "true",
+    "MERL_LIBERO_ENV_BACKEND": "egl",
+    "MERL_LIBERO_EGL_DEVICE_ID": "0",
+    "MERL_LIBERO_GL_FALLBACK": "none",
+    "MERL_LIBERO_FORCE_FALLBACK_AFTER_CRASH": "true",
+    "MERL_GLX_SOFTWARE": "true",
+    "PYTHONFAULTHANDLER": "1",
+    "TF_FORCE_GPU_ALLOW_GROWTH": "true"
+  }
+}
