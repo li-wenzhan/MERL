@@ -3892,6 +3892,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
                         "wm_images": [],
                         "env_images": init_env_images,
                         "env_dones": init_env_dones,
+                        "executed_actions": [],
                         "pred_scores": [],
                     }
                 )
@@ -4097,6 +4098,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
                 task_records[idx]["finish_step"] = result["finish_step"]
                 env_images = list(result.get("env_images", []))
                 env_dones = list(result.get("env_dones", []))
+                video_records[idx]["executed_actions"].extend(result.get("normed_actions", []))
                 if env_images:
                     video_records[idx]["env_images"].extend(env_images)
                 if env_dones:
@@ -4135,6 +4137,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
                          max_steps=max_steps, global_step=int(global_steps), observation_source="real_environment",
                          protocol_id=str(getattr(self.config, "presentation_protocol", "")),
                          label=str(getattr(self.config, "presentation_label", self.config.experiment_name))),
+                    executed_actions=video_records[index]["executed_actions"],
                 )
 
         if is_valid:

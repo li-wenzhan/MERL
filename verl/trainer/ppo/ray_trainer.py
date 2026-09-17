@@ -3406,12 +3406,17 @@ class RayTrainer(object):
 
         # training mode: MBRL / MFRL / MERL
         train_mode = str(getattr(self.config.trainer, "train_mode", "MERL")).upper()
-        if train_mode not in ("MBRL", "MFRL", "MERL"):
+        if train_mode not in ("MBRL", "MFRL", "MERL", "ONLINE_MBRL"):
             print(
                 f"[fit_wm_v5] Unknown train_mode='{train_mode}', falling back to 'MERL'"
             )
             train_mode = "MERL"
         print(f"train_mode: {train_mode}")
+        if train_mode == "ONLINE_MBRL":
+            from merl.modes import validate_online_mbrl
+            validate_online_mbrl(wm_cfg)
+            self._imagined_horizon = imag_horizon_min
+            self._actor_lr_health_scale = 1.0
         strict_mode_assert = bool(
             getattr(self.config.trainer, "strict_mode_assert", train_mode == "MERL")
         )
@@ -3478,7 +3483,7 @@ class RayTrainer(object):
         ).strip().lower()
 
         update_wm = self.config.actor_rollout_ref.world_model.get("fine_tune", False)
-        update_wm_effective = bool(update_wm) and (train_mode == "MERL")
+        update_wm_effective = bool(update_wm) and train_mode in ("MERL", "ONLINE_MBRL")
         wm_enabled = bool(getattr(wm_cfg, "enable", False))
         if wm_enabled and train_mode != "MFRL":
             self._ensure_wm_trainer_initialized()
@@ -3614,7 +3619,7 @@ class RayTrainer(object):
             if len(resume_state) > 0
             else None
         )
-        if train_mode in ("MBRL", "MERL"):
+        if train_mode in ("MBRL", "MERL", "ONLINE_MBRL"):
             self._restore_replay_pool_state(resume_state=resume_state)
 
         # helper utilities
@@ -5594,7 +5599,7 @@ class RayTrainer(object):
                 buffer_batch = []
                 total_needed = batch_size * n_samples
 
-                policy_mode = train_mode
+                policy_mode = "MBRL" if train_mode == "ONLINE_MBRL" else train_mode
                 planned_r_wm_prev = 0.0
                 real_collection_prompt_target = batch_size
                 real_collection_sample_target = total_needed
@@ -5604,11 +5609,14 @@ class RayTrainer(object):
                 last_weak_update_calibration_step = getattr(
                     self, "_wm_weak_update_last_calibration_step", None
                 )
-                if train_mode == "MBRL":
+                if train_mode in ("MBRL", "ONLINE_MBRL"):
                     planned_r_wm_prev = 1.0
                     real_collection_prompt_target = 0
                     real_collection_sample_target = 0
                     valid_batch_target_size = total_needed
+                    if train_mode == "ONLINE_MBRL":
+                        real_collection_prompt_target = batch_size
+                        real_collection_sample_target = total_needed
                 elif (
                     train_mode == "MERL"
                     and update_wm_effective
@@ -5895,8 +5903,7 @@ class RayTrainer(object):
                         )
 
                         if (
-                            weak_update_active
-                            and weak_update_calibration_step
+                            (train_mode == "ONLINE_MBRL" or (weak_update_active and weak_update_calibration_step))
                             and real_collection_prompt_target > 0
                             and not _is_valid_dataproto(calibration_real_batch)
                         ):
@@ -6022,7 +6029,7 @@ class RayTrainer(object):
                                         "wm/weak_update_calibration_real_samples"
                                     ] = float(len(calibration_real_batch))
                                     print(
-                                        "[WM WEAK] Collected sparse real calibration batch.",
+                                        "[WM DATA] Collected real simulator-training batch.",
                                         flush=True,
                                     )
 
@@ -6204,6 +6211,8 @@ class RayTrainer(object):
                         break
 
                 valid_batch = clone_dataproto_for_replay(valid_batch)
+                if train_mode == "ONLINE_MBRL" and not _is_valid_dataproto(calibration_real_batch):
+                    raise RuntimeError("ONLINE_MBRL requires a valid real-data batch for every WM update")
                 _ensure_uid(valid_batch)
                 valid_batch = _attach_real_reward_anchors(
                     valid_batch, is_wm=(policy_mode == "MBRL")
@@ -6254,7 +6263,7 @@ class RayTrainer(object):
                 metrics["wm/current_imag_horizon"] = current_imagined_horizon
 
                 # decide use_wm_now depending on mode
-                if train_mode == "MBRL":
+                if train_mode in ("MBRL", "ONLINE_MBRL"):
                     use_wm_now = True
                 else:
                     use_wm_now = update_wm_effective and (
@@ -6914,8 +6923,8 @@ class RayTrainer(object):
                             prioritized_wm_pool=self.wm_prioritized_pool,
                             total_needed=total_needed,
                             r_wm=r_wm,
-                            alpha=0.6,
-                            beta=0.4,
+                            alpha=0.0 if train_mode == "ONLINE_MBRL" else 0.6,
+                            beta=0.0 if train_mode == "ONLINE_MBRL" else 0.4,
                             ratio_rounding=wm_ratio_rounding,
                             ratio_carry=(
                                 float(self._wm_ratio_carry)
@@ -7133,7 +7142,7 @@ class RayTrainer(object):
                 else:
                     if (
                         strict_mode_assert
-                        and train_mode in ("MERL", "MBRL")
+                        and train_mode in ("MERL", "MBRL", "ONLINE_MBRL")
                         and pre_filter_wm_token_stats["sample_count"] > 0
                     ):
                         raise RuntimeError(
@@ -7202,7 +7211,7 @@ class RayTrainer(object):
                 )
                 if (
                     strict_mode_assert
-                    and train_mode in ("MERL", "MBRL")
+                    and train_mode in ("MERL", "MBRL", "ONLINE_MBRL")
                     and actual_wm_after_filter > 0
                     and post_filter_wm_token_stats["token_count"] <= 0
                 ):
@@ -7357,12 +7366,17 @@ class RayTrainer(object):
                 mixed_batch.meta_info["imagined_horizon"] = int(
                     current_imagined_horizon
                 )
+                if train_mode == "ONLINE_MBRL":
+                    from merl.modes import online_mbrl_actor_contract
+                    online_mbrl_actor_contract(mixed_batch.batch)
+                    metrics["wm/trust_enabled"] = 0.0
+                    metrics["wm/online_real_training_samples"] = float(len(calibration_real_batch))
                 actor_contract_stats = inject_actor_token_contract(
                     mixed_batch,
                     action_token_len=self.config.actor_rollout_ref.model.action_token_len,
                     strict=bool(
                         strict_mode_assert
-                        and train_mode in ("MERL", "MBRL")
+                        and train_mode in ("MERL", "MBRL", "ONLINE_MBRL")
                         and float(metrics.get("wm/ratio_wm", 0.0)) > 0.0
                     ),
                     require_wm_anchor_reward=require_wm_anchor_reward,
@@ -7372,7 +7386,7 @@ class RayTrainer(object):
                     metrics[f"wm/actor_input_{stat_key}"] = stat_value
                 if (
                     strict_mode_assert
-                    and train_mode in ("MERL", "MBRL")
+                    and train_mode in ("MERL", "MBRL", "ONLINE_MBRL")
                     and float(metrics.get("wm/ratio_wm", 0.0)) > 0.0
                 ):
                     if actor_contract_stats["imag_sample_count"] != float(
@@ -7652,7 +7666,7 @@ class RayTrainer(object):
                         )
                         if (
                             strict_mode_assert
-                            and train_mode in ("MERL", "MBRL")
+                            and train_mode in ("MERL", "MBRL", "ONLINE_MBRL")
                             and float(metrics.get("wm/ratio_wm", 0.0)) > 0.0
                         ):
                             imag_tokens = float(
@@ -7827,9 +7841,12 @@ class RayTrainer(object):
                         flush=True,
                     )
 
+                if train_mode == "ONLINE_MBRL" and not valid_wm_update:
+                    raise RuntimeError("ONLINE_MBRL did not complete a real-data WM update; refusing to report an online baseline")
+
                 # WM eval
                 online_eval_without_update = (
-                    train_mode in ("MBRL", "MERL") and use_wm_now
+                    train_mode in ("MBRL", "MERL", "ONLINE_MBRL") and use_wm_now
                 )
                 should_run_fixed_shared_eval = (
                     fixed_eval_enabled
@@ -7863,7 +7880,7 @@ class RayTrainer(object):
                             _collect_wm_eval_metrics(eval_global_steps=global_steps)
                         )
 
-                if train_mode in ("MBRL", "MERL"):
+                if train_mode in ("MBRL", "MERL", "ONLINE_MBRL"):
                     metrics.update(
                         self._cleanup_stale_rollout_shards(
                             keep_from_global_steps=global_steps + 1
@@ -8004,12 +8021,12 @@ class RayTrainer(object):
                 # save world model mapping
                 should_save_wm = (
                     valid_wm_update
-                    and save_freq_wm_inner > 0
-                    and (global_steps + 1) % save_freq_wm_inner == 0
+                    and (train_mode == "ONLINE_MBRL" or (
+                        save_freq_wm_inner > 0 and (global_steps + 1) % save_freq_wm_inner == 0))
                 )
 
                 if should_save_wm:
-                    should_persist_wm = (global_steps + 1) % save_freq_wm_outer == 0
+                    should_persist_wm = train_mode == "ONLINE_MBRL" or (global_steps + 1) % save_freq_wm_outer == 0
                     world_model_ckpt_candidate = None
 
                     if should_persist_wm:
@@ -8042,6 +8059,8 @@ class RayTrainer(object):
                                     f"[checkpoint] Removed old world model checkpoints: {removed_wm_ckpts}"
                                 )
                         except Exception as e:
+                            if train_mode == "ONLINE_MBRL":
+                                raise RuntimeError("ONLINE_MBRL failed to save its updated WM") from e
                             print(
                                 "[WM Save] Warning: failed to persist world model checkpoint, "
                                 f"continue with in-memory sync only: {e}"
@@ -8055,11 +8074,14 @@ class RayTrainer(object):
                             )
 
                     print("x2-2. Syncing updated world model to each worker via memory")
-                    self.actor_rollout_wg.sync_world_model_mapping_from_trainer()
+                    sync_results = self.actor_rollout_wg.sync_world_model_mapping_from_trainer()
+                    if train_mode == "ONLINE_MBRL":
+                        from merl.modes import require_online_wm_sync
+                        require_online_wm_sync(sync_results)
                     ray.get(ray.remote(lambda: None).remote())
 
                 if checkpoint_saved:
-                    if train_mode in ("MBRL", "MERL"):
+                    if train_mode in ("MBRL", "MERL", "ONLINE_MBRL"):
                         self._save_replay_pool_state(global_step=global_steps)
                     self._write_resume_state(
                         epoch=epoch,
@@ -8087,7 +8109,7 @@ class RayTrainer(object):
             logger.log(data=val_metrics, step=global_steps)
 
         # Final refresh of latest state even if the last step was not a save_freq boundary.
-        if train_mode in ("MBRL", "MERL"):
+        if train_mode in ("MBRL", "MERL", "ONLINE_MBRL"):
             self._save_replay_pool_state(global_step=global_steps)
         final_resume_epoch = (
             self.config.trainer.total_epochs

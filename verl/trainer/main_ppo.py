@@ -1040,7 +1040,7 @@ def main_task(config):
         raise NotImplementedError
 
     train_mode = str(getattr(config.trainer, "train_mode", "MERL")).upper()
-    if train_mode not in ("MBRL", "MFRL", "MERL"):
+    if train_mode not in ("MBRL", "MFRL", "MERL", "ONLINE_MBRL"):
         print(f"[main_ppo] Unknown train_mode='{train_mode}', falling back to 'MERL'")
         train_mode = "MERL"
     config.trainer.train_mode = train_mode
@@ -1071,7 +1071,7 @@ def main_task(config):
 
         if wm_cfg is not None:
             expected_enable = train_mode != "MFRL"
-            expected_fine_tune = train_mode == "MERL"
+            expected_fine_tune = train_mode in ("MERL", "ONLINE_MBRL")
             actual_enable = bool(getattr(wm_cfg, "enable", False))
             actual_fine_tune = bool(getattr(wm_cfg, "fine_tune", False))
             if actual_enable != expected_enable:
@@ -1104,6 +1104,11 @@ def main_task(config):
                 print("[main_ppo] MBRL mode detected; freezing world model updates.")
             wm_cfg.enable = True
             wm_cfg.fine_tune = False
+        elif train_mode == "ONLINE_MBRL":
+            from merl.modes import validate_online_mbrl
+            validate_online_mbrl(wm_cfg)
+            wm_cfg.enable = True
+            wm_cfg.fine_tune = True
 
     from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
 

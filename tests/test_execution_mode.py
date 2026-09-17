@@ -15,7 +15,7 @@ class ExecutionModeTests(unittest.TestCase):
         scope = {}
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), scope)
         configure = scope[node.name]
-        for mode in ("MFRL", "MBRL", "MERL"):
+        for mode in ("MFRL", "MBRL", "MERL", "ONLINE_MBRL"):
             for evaluation in (True, False):
                 wm = SimpleNamespace(enable=True, fine_tune=True, fixed_eval_enabled=True)
                 config = SimpleNamespace(trainer=SimpleNamespace(train_mode=mode, val_only=evaluation),

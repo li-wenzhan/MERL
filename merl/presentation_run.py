@@ -11,6 +11,7 @@ import sys
 import time
 
 from merl.launch import ROOT, digest
+from merl.modes import MODES
 
 
 def training_overrides(steps, seconds):
@@ -28,6 +29,8 @@ def training_overrides(steps, seconds):
             "actor_rollout_ref.rollout.temperature=1.0",
             "actor_rollout_ref.rollout.train_max_steps=384",
             "actor_rollout_ref.world_model.wm_inner_steps=2",
+            "actor_rollout_ref.world_model.save_freq_wm_outer=1",
+            "actor_rollout_ref.world_model.save_freq_wm_inner=1",
             "actor_rollout_ref.world_model.wm_warmup_steps=1",
             "actor_rollout_ref.world_model.num_inference_steps=8",
             "actor_rollout_ref.world_model.eval_num_inference_steps=8",
@@ -58,7 +61,8 @@ def protocol_for(config, task_ids, trials, horizon, eval_offset=10):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--mode", choices=("ALL", "MFRL", "MBRL", "MERL"), default="ALL")
+    p.add_argument("--mode", choices=("ALL", *MODES), default="ALL")
+    p.add_argument("--modes", nargs="+", choices=MODES, help="Explicit sequential subset; use instead of --mode")
     p.add_argument("--job", choices=("train", "evaluate"), default="train")
     p.add_argument("--label", help="Evaluation label, e.g. SFT; never changes the policy")
     p.add_argument("--sft-checkpoint", type=Path, required=True)
@@ -72,6 +76,9 @@ def main():
     p.add_argument("--actor-gpus", type=int, default=3)
     p.add_argument("--eval-config", type=Path, default=ROOT / "configs/evaluation_config.yaml")
     args = p.parse_args()
+    modes = args.modes or (["MFRL", "MBRL", "MERL"] if args.mode == "ALL" else [args.mode])
+    if args.modes and (args.mode != "ALL" or args.job != "train" or len(set(args.modes)) != len(args.modes)):
+        p.error("--modes requires training, unique modes, and no --mode override")
     if args.job == "evaluate" and args.mode == "ALL":
         p.error("Evaluate one supplied checkpoint at a time; use --mode MFRL --label SFT for the initial policy")
     if args.job == "train" and args.label:
@@ -83,7 +90,7 @@ def main():
         p.error("The short training profile requires three actor GPUs (plus a fourth for WM modes)")
     if args.eval_offset < args.trials or args.eval_offset + args.trials > 50:
         p.error("Evaluation states must be disjoint from training states and within the frozen 50-state panel")
-    if args.job == "train" and args.mode != "MFRL" and not args.wm_checkpoint:
+    if args.job == "train" and any(mode != "MFRL" for mode in modes) and not args.wm_checkpoint:
         p.error("An explicit WM checkpoint is required")
     if args.job == "train" and len(args.tasks) * args.trials < args.actor_gpus:
         p.error("The training panel must contain at least one prompt per actor GPU")
@@ -91,7 +98,6 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     protocol = protocol_for(args.eval_config.resolve(), args.tasks, args.trials, 512, args.eval_offset)
     (root / "protocol.json").write_text(json.dumps(protocol, indent=2) + "\n")
-    modes = ["MFRL", "MBRL", "MERL"] if args.mode == "ALL" else [args.mode]
     failed = False
     for mode in modes:
         label = args.label or mode
@@ -108,6 +114,8 @@ def main():
                      f"actor_rollout_ref.rollout.presentation_label={json.dumps(label)}"]
         if args.job == "train":
             overrides += training_overrides(args.steps, args.training_minutes * 60)
+            if mode == "ONLINE_MBRL":
+                overrides += ["actor_rollout_ref.world_model.wm_warmup_steps=0"]
         command = [sys.executable, "-u", "-m", "merl.launch", "--mode", mode, "--job", args.job,
                    "--experiment", experiment, "--sft-checkpoint", str(args.sft_checkpoint.resolve()),
                    "--eval-config", str(args.eval_config.resolve()), "--output-root", str(root / "runs"),

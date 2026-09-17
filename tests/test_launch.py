@@ -11,10 +11,10 @@ class LaunchTests(unittest.TestCase):
                                    "--wm-checkpoint", "/models/wm.pt", "--experiment", "test", *extra])
 
     def test_modes_require_and_select_trained_simulator(self):
-        for mode in ("MERL", "MBRL", "MFRL"):
+        for mode in ("MERL", "MBRL", "MFRL", "ONLINE_MBRL"):
             cfg, _ = build_settings(self.args(mode))
             self.assertEqual(cfg["actor_rollout_ref.world_model.enable"], mode != "MFRL")
-            self.assertEqual(cfg["actor_rollout_ref.world_model.fine_tune"], mode == "MERL")
+            self.assertEqual(cfg["actor_rollout_ref.world_model.fine_tune"], mode in ("MERL", "ONLINE_MBRL"))
             self.assertEqual(cfg["actor_rollout_ref.world_model.load_from_ckpt"], mode != "MFRL")
         args = self.args()
         args.wm_checkpoint = None

@@ -1,7 +1,7 @@
 # MERL: World Model-Evolving Reinforcement Learning with Trust-Calibrated Imagination
 
 MERL combines policy optimization, a learned simulator and online simulator updates
-for robot learning. The repository also provides MFRL and frozen-simulator MBRL
+for robot learning. The repository also provides MFRL, frozen-simulator MBRL and online-updated MBRL
 execution modes, standalone Ctrl-World pretraining and real-robot WM inference.
 
 ## Implementation status
@@ -46,7 +46,7 @@ Online rollout with pretrained models **does not require demonstration HDF5
 datasets**. Demonstrations are needed for SFT or offline WM pretraining. Fixed WM
 evaluation uses separately collected trajectories; keep them out of training/replay.
 
-MERL/MBRL additionally require local SVD/CLIP backbones configured in
+MERL/MBRL/ONLINE_MBRL additionally require local SVD/CLIP backbones configured in
 `configs/wm_online_config.py` and an explicit trained Ctrl-World `--wm-checkpoint`.
 The launcher enables warm-start and strict checkpoint loading must succeed.
 
@@ -92,6 +92,10 @@ For a sequential short-budget MFRL/MBRL/MERL run with saved real-environment
 videos, disjoint online train/evaluation states and PPT-ready comparison panels,
 see the [presentation pilot](docs/presentation_pilot.md). Its defaults target a
 small exploratory run on one four-GPU allocation, not a performance claim.
+
+`ONLINE_MBRL` adds online simulator updates to the MBRL actor path without trust
+weighting or adaptive mixing. See [online MBRL and WM visuals](docs/online_mbrl_and_wm_visuals.md)
+for its contract and GT/frozen-WM/online-WM/MERL fixed-action comparison videos.
 
 ## Validation and experiments
 

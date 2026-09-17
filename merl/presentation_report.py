@@ -120,7 +120,7 @@ def build_report(root):
     output = root / "report"
     output.mkdir(exist_ok=True)
     panels, summaries, rows = [], [], []
-    for mode in ("MFRL", "MBRL", "MERL"):
+    for mode in ("MFRL", "MBRL", "ONLINE_MBRL", "MERL"):
         folder = root / mode
         if not (folder / "run_info.json").exists():
             continue
@@ -138,9 +138,9 @@ def build_report(root):
             warnings.append("No nonzero finite actor gradient was logged; do not claim learned improvement")
         if mode == "MERL" and info["job"] == "train" and evidence["imagined_actor_tokens_logged"] == 0:
             warnings.append("No imagined actor tokens were logged; full MERL mechanism is not demonstrated")
-        if mode in ("MERL", "MBRL") and info["job"] == "train" and evidence["imagined_actor_weight_max"] == 0:
+        if mode in ("MERL", "MBRL", "ONLINE_MBRL") and info["job"] == "train" and evidence["imagined_actor_weight_max"] == 0:
             warnings.append("No positive imagined actor weight was logged; WM contribution is not demonstrated")
-        if mode == "MERL" and info["job"] == "train" and evidence["world_model_update_steps"] == 0:
+        if mode in ("MERL", "ONLINE_MBRL") and info["job"] == "train" and evidence["world_model_update_steps"] == 0:
             warnings.append("No completed world-model updates were logged; simulator evolution is not demonstrated")
         if mode == "MBRL" and evidence["world_model_update_steps"] > 0:
             warnings.append("World-model updates were logged in MBRL; inspect the frozen-simulator contract")

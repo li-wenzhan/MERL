@@ -11,10 +11,10 @@ import platform
 import subprocess
 import sys
 import time
+from merl.modes import MODES, ONLINE_WM_MODES, validate_online_mbrl
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "configs/launch_profiles.json"
-MODES = ("MERL", "MFRL", "MBRL")
 
 
 def digest(path):
@@ -75,7 +75,7 @@ def build_settings(args):
         "actor_rollout_ref.rollout.libero_pro_eval_config_path": str(args.eval_config.expanduser().resolve()),
         "actor_rollout_ref.world_model.config_path": str(args.wm_config.expanduser().resolve()),
         "actor_rollout_ref.world_model.enable": wm_enabled,
-        "actor_rollout_ref.world_model.fine_tune": wm_enabled and args.mode == "MERL",
+        "actor_rollout_ref.world_model.fine_tune": wm_enabled and args.mode in ONLINE_WM_MODES,
         "actor_rollout_ref.world_model.load_from_ckpt": wm_enabled,
         "actor_rollout_ref.world_model.fixed_eval_enabled": args.wm_eval == "fixed",
         "actor_rollout_ref.wm_gpu_idx": args.actor_gpus if wm_enabled else 0,
@@ -159,6 +159,8 @@ def compose_config(overrides):
     with initialize_config_dir(config_dir=str(ROOT / "verl/trainer/config"), version_base=None):
         cfg = compose(config_name="ppo_trainer", overrides=overrides)
     OmegaConf.resolve(cfg)
+    if cfg.trainer.train_mode == "ONLINE_MBRL" and not cfg.trainer.val_only:
+        validate_online_mbrl(cfg.actor_rollout_ref.world_model)
     if cfg.trainer.nnodes != 1:
         raise ValueError("the maintained launcher supports one ACP node")
     for value in (cfg.data.train_batch_size, cfg.data.val_batch_size,
@@ -256,6 +258,7 @@ def main():
                     PROFILE, args.eval_config.expanduser().resolve(), args.wm_config.expanduser().resolve(),
                     ROOT / "merl/launch.py", ROOT / "verl/trainer/main_ppo.py",
                     ROOT / "merl/episode_artifacts.py", ROOT / "verl/utils/dataset/rob_dataset.py",
+                    ROOT / "merl/modes.py",
                     ROOT / "verl/trainer/ppo/ray_trainer.py", ROOT / "verl/workers/fsdp_workers.py",
                     ROOT / "verl/workers/actor/dp_rob.py", ROOT / "verl/workers/rollout/rob_rollout_wm_pro.py")},
                 "packages": {name: importlib.metadata.version(name) for name in ("torch", "transformers", "ray", "numpy")},
