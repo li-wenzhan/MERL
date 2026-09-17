@@ -18,6 +18,18 @@ Sources: local submission PDF (28 pages) and one-page CoRL rebuttal under
 | Matched budgets and protocol | Mode scripts differ in batch sizes, optimizer/weight guards and collection paths | Build a shared resolved protocol and record actual environment interaction, not only online-step count |
 | Reliable initialization and resume | Unified launcher now requires and enables an explicit WM checkpoint; strict load failures abort. `WorldModelTrainer.save_world_model` still saves model weights only | Verify actual loaded assets; optimizer/RNG/scheduler state need an explicit full-resume contract |
 
+## LIBERO-PRO protocol caveat
+
+`EnvironmentReplacePerturbator.perturb` currently hardcodes the replacement to
+`living_room_table`; its random candidate selection is commented out. Tasks already
+using that environment may receive no environment shift. The startup cleanup keeps
+this behavior to preserve the existing protocol. Do not describe these runs as
+uniformly random environment perturbations. Before an OOD robustness claim, define
+an explicit per-task perturbation panel, check that each intended shift changes the
+BDDL semantics, and reuse frozen BDDL/init assets across all methods. The official
+initial-state generator has no seed argument; record asset hashes as well as the
+configuration and source revision.
+
 ## Architecture map
 
 - `verl/trainer/main_ppo.py`: Hydra entrypoint, mode selection, Ray orchestration.
