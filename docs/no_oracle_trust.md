@@ -78,6 +78,56 @@ The current production adapters, FSDP lockstep execution, action-token/old-log-p
 retention, history-conditioned Ctrl-World calls and actor `DataProto` conversion
 remain integration work. A callback must not hide live environment access.
 
+### Stored-window exporter and history boundary
+
+`merl.stored_calibration` implements offline pair construction and recursive
+history management. `StoredTrajectory` requires **T+1 observations for T executed
+actions**, explicit post-action proxy targets, a complete-trajectory split and an
+episode ID. It does not guess alignment from padded rollout videos. Window
+`start=k` uses `o[k]` as anchor, replays `a[k:k+C]` and labels against
+`o[k+1:k+C+1]`. Its H historical observations are the outcomes of the H preceding
+actions, ending at the anchor. Insufficient history is rejected, not synthesized.
+
+```python
+from merl.stored_calibration import (
+    HistorySimulator, build_calibration_batch, context_at,
+)
+
+# step(past_context, executed_actions) -> (predicted_frames, proxy_scores)
+# encode(frames[N,...]) -> frozen deterministic latents[N,D]
+batch = build_calibration_batch(
+    calibration_episodes, windows=[(0, 8), (0, 16)],
+    history_size=8, chunk_size=8, stage_context=stage_context,
+    simulator_revision=revision, step=step, encode=encode,
+)
+predictor.fit(batch, stage=stage)
+
+# Start each recursive candidate with its own history object.
+context = context_at(grounded_episode, start=8, history_size=8)
+simulator = HistorySimulator(context, step, encode)
+chunks = imagine(
+    anchor=context.anchor, instruction=context.instruction,
+    horizon=horizon, chunk_size=8, policy=policy,
+    simulator=simulator, encode_anchor=simulator.encode_anchor,
+    predictor=predictor, stage_context=stage_context,
+    simulator_revision=revision, stage=stage,
+)
+```
+
+Only past context and exact stored actions reach the simulator while constructing
+calibration pairs; future observations/labels are accessed separately afterward.
+Recursive history then advances exclusively through predicted frames/actions.
+Predicted and grounded frames use the same supplied encoder, rather than mixing
+diffusion latents with independently sampled VAE latents. The exporter rejects
+non-calibration trajectories before any simulator call and masks partial windows.
+Tests change future labels while holding the past fixed and verify identical
+prediction features, as well as action/history alignment at recursive depths.
+
+The callback adapters are still required: convert policy gripper coordinates to
+executed coordinates **once**, preserve policy tokens separately, define the
+deterministic visual encoding and adapt Ctrl-World tensor/image conventions.
+This boundary implementation is not an activation switch for the legacy trainer.
+
 ## Equations and policy contract
 
 - Combined error: `alpha_obs * E_obs + alpha_proxy * E_proxy`.

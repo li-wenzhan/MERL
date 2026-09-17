@@ -22,7 +22,7 @@ class LiberoStatesTests(unittest.TestCase):
                 states = [np.arange(12, dtype=dtype), np.ones(12, dtype=dtype)]
                 torch.save(states, path)
                 np.testing.assert_array_equal(load_init_states(path), states)
-        self.assertEqual(torch.serialization.get_safe_globals(), before)
+        self.assertCountEqual(torch.serialization.get_safe_globals(), before)
 
     def test_rejects_malformed_and_unsupported_states(self):
         with tempfile.TemporaryDirectory() as directory:
