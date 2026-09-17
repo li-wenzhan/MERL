@@ -1,2 +1,6 @@
-# Linux training entrypoints must survive Windows checkouts unchanged.
+# Keep executable text portable between Windows CCI tooling and Linux ACP.
 *.sh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf

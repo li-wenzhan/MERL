@@ -86,11 +86,13 @@ class LIBERO_Dataset(Dataset):
         task_suite_name,
         num_trials_per_task=50,
         train_val="train",
+        task_ids=None,
     ):
 
         self.task_suite_name = task_suite_name
         self.num_trials_per_task = num_trials_per_task
         self.train_val = train_val
+        self.task_ids = task_ids
         self._read_files_and_tokenize()
 
     def _read_files_and_tokenize(self):
@@ -98,6 +100,11 @@ class LIBERO_Dataset(Dataset):
         benchmark_dict = benchmark.get_benchmark_dict()
         task_suite = benchmark_dict[self.task_suite_name]()
         num_tasks_in_suite = task_suite.n_tasks
+        selected_ids = list(range(num_tasks_in_suite)) if self.task_ids is None else list(self.task_ids)
+        if (not selected_ids or len(set(selected_ids)) != len(selected_ids)
+                or any(not isinstance(i, int) or isinstance(i, bool) or i < 0 or i >= num_tasks_in_suite
+                       for i in selected_ids)):
+            raise ValueError(f"Invalid task IDs for {self.task_suite_name}: {selected_ids}")
         dataframes = []
 
         if self.task_suite_name in [
@@ -107,7 +114,7 @@ class LIBERO_Dataset(Dataset):
             "libero_object",
             "libero_spatial",
         ]:
-            for task_id in range(num_tasks_in_suite):
+            for task_id in selected_ids:
                 if self.train_val == "train":
                     trials_range = list(range(0, int(self.num_trials_per_task)))
                 elif self.train_val == "valid":

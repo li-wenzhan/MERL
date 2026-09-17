@@ -65,6 +65,7 @@ def _require_import(module_name: str, install_hint: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, help="configs/evaluation_config.yaml")
+    parser.add_argument("--actor-import", action="store_true", help="Also verify the OpenVLA-OFT actor dependencies")
     args = parser.parse_args()
 
     cfg_path = _require_path("LIBERO_PRO_EVAL_CONFIG_PATH", args.config)
@@ -112,6 +113,10 @@ def main() -> None:
     # With the deployed native libraries, reversing these imports segfaults while
     # loading Triton's extension, before Python can report an import exception.
     from verl.utils.libero_path import ensure_libero_pro_root
+    if args.actor_import:
+        from verl.workers.actor import RobDataParallelPPOActor
+
+        print(f"[preflight] actor import OK: {RobDataParallelPPOActor.__name__}", flush=True)
 
     _require_import(
         "robosuite.environments.manipulation.single_arm_env",

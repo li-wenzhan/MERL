@@ -1,270 +1,48 @@
-# MeRL Three-Mode Minimal Guide
+# Minimal entrypoints
 
-For the portable four-GPU wrapper and current runtime gates, see
-[the H100 runbook](../docs/h100_runbook.md). The legacy mode labels below do not
-establish matched budgets or recursive imagination; see
-[the implementation audit](../docs/implementation_audit.md).
+`run_libero.sh` forwards to `python -m merl.launch`: one entry for MERL, MBRL and
+MFRL, with `--job train|evaluate|collect`. Devices and assets are arguments, not
+separate scripts. Internal helpers now live in `scripts/`.
 
-This page is the minimal runbook for the current three-mode setup.
-
-## 1. Shared WM Eval Dataset First
-
-If you want WM evaluation metrics in MBRL or MERL, first generate the shared held-out WM eval dataset.
+## Fixed WM evaluation data
 
 ```bash
+SFT_CHECKPOINT=/models/openvla-oft \
+SHARED_WM_EVAL=/data/wm_eval_run001 EXPERIMENT=wm_eval_run001 ACTOR_GPUS=1 \
 bash examples/generate_shared_wm_eval_dataset.sh
 ```
 
-By default, the script writes the actual WM eval dataset to:
+Collection uses deterministic real-environment trajectories without policy updates.
+Mini/full use 2/6 trials per task and may share initial-state prefixes: they are not
+independent statistical replicates. Nonempty splits cannot be reused. Keep this
+root separate from training data and record checkpoint, task/trial IDs and revision.
 
-```text
-./tmp_files/wm_eval_shared/libero_10/wm_eval_fixed_mini/global_steps_0_rank_0/shard_*.tar
-./tmp_files/wm_eval_shared/libero_10/wm_eval_fixed_full/global_steps_0_rank_0/shard_*.tar
-```
-
-If multiple rollout ranks are used, the last directory level becomes `global_steps_0_rank_<rank>` for each rank.
-
-The generator also writes its own run directory to:
-
-```text
-./checkpoints/WM_EVAL_DATA/shared_wm_eval_mini_libero_10
-./checkpoints/WM_EVAL_DATA/shared_wm_eval_full_libero_10
-```
-
-Important distinction:
-
-- `tmp_files/wm_eval_shared/...` is the dataset that WM evaluation reads later.
-- `checkpoints/WM_EVAL_DATA/...` is only the generator run's own log/checkpoint directory.
-
-The generator currently creates two fixed splits:
-
-- `wm_eval_fixed_mini`: high-frequency benchmark used during training.
-- `wm_eval_fixed_full`: lower-frequency benchmark used every few WM eval intervals.
-
-## 2. Recommended Launch Order
-
-Run the full workflow in this order so the baseline, pure-WM, and real-calibrated WM results stay comparable.
-
-1. Generate shared WM eval dataset
+## Real-environment evaluation
 
 ```bash
-bash examples/generate_shared_wm_eval_dataset.sh
+bash examples/run_libero.sh --mode MERL --job evaluate \
+  --sft-checkpoint /models/exported-merl-actor \
+  --experiment merl_eval_001 --actor-gpus 3 --trials 6
 ```
 
-2. MFRL baseline
+Supply an exported Hugging Face/OpenVLA checkpoint including action statistics,
+not raw rank-local FSDP shards. Evaluation disables WM rollout and uses environment
+success. Match evaluation configuration, initial states, sampling and horizons
+across methods; retain failures and timeouts.
 
-```bash
-bash examples/MFRL/train_mfrl_debug_3gpu_fix_pro_.sh
-```
-
-3. MBRL pure imagined-data policy update
-
-```bash
-bash examples/MBRL/train_mbrl_debug_3gpu_fix_pro_.sh
-```
-
-4. MERL real-data-calibrated world model
-
-```bash
-bash examples/train_merl_debug_3gpu_fix_pro_.sh
-```
-
-5. Compare results
+## Result inspection
 
 ```bash
 python scripts/compare_mode_results.py \
-  --mfrl checkpoints/MFRL/<mfrl_experiment_dir> \
-  --mbrl checkpoints/MBRL/<mbrl_experiment_dir> \
-  --merl checkpoints/MERL/<merl_experiment_dir>
+  --mfrl checkpoints/MFRL/<run> --mbrl checkpoints/MBRL/<run> \
+  --merl checkpoints/MERL/<run>
 ```
 
-## 2A. Fresh Start vs Resume
+Inspect `val/test_score/all` for environment success; training proxy reward is not
+a success label. With fixed WM evaluation enabled, inspect `wm/eval/*` plus
+missing-data/error diagnostics. Legacy profiles differ in optimizer, temperature
+and confidence guards; raw scores are not a controlled algorithm comparison.
+See [the runbook](../docs/h100_runbook.md).
 
-All three launchers now use the same explicit resume controls:
-
-- `RESUME_ENABLE=false` by default. This disables Ray's implicit auto-resume and treats the run as a fresh start.
-- `RESUME_DIR` defaults to the current experiment output directory.
-- If `RESUME_ENABLE=false` but the target experiment directory already contains actor checkpoints or resume metadata, the script now fails fast instead of silently mixing fresh and resumed state.
-- If `RESUME_ENABLE=true`, the script requires an existing resume directory with actor/resume/log artifacts before launch.
-
-Fresh start example:
-
-```bash
-EXPERIMENT_NAME=my_mbrl_run_0424 \
-RESUME_ENABLE=false \
-bash examples/MBRL/train_mbrl_debug_3gpu_fix_pro_.sh
-```
-
-Resume example:
-
-```bash
-EXPERIMENT_NAME=my_mbrl_run_0424 \
-RESUME_ENABLE=true \
-RESUME_DIR=checkpoints/MBRL/my_mbrl_run_0424 \
-bash examples/MBRL/train_mbrl_debug_3gpu_fix_pro_.sh
-```
-
-The same `RESUME_ENABLE` and `RESUME_DIR` pattern also applies to MERL and MFRL.
-
-For all three modes, the source SFT VLA directory must contain `dataset_statistics.json`. This file provides the `libero_10` action un-normalization stats used by rollout. Newly saved actor checkpoints now keep that file as part of the checkpoint so later resume/eval runs stay self-consistent.
-
-## 3. How WM Eval Is Read Later
-
-MBRL and MERL already point to the shared WM eval root through:
-
-```text
-shared_wm_eval_root=./tmp_files/wm_eval_shared/$DATASET_NAME
-shared_wm_eval_global_steps=0
-fixed_eval_enabled=True
-```
-
-So after the generator script finishes, later MBRL or MERL runs will automatically read that dataset for WM evaluation, as long as all of the following stay consistent:
-
-1. `DATASET_NAME` is the same during generation and training.
-2. `shared_wm_eval_root` in the training script points to the same root directory.
-3. The split directories `wm_eval_fixed_mini` and `wm_eval_fixed_full` already exist under that root.
-
-No extra manual import step is needed if you keep the default paths unchanged.
-
-If you change `DATASET_NAME` or `SHARED_WM_EVAL_ROOT`, regenerate the dataset or pass the same overridden path to both the generator and the later MBRL or MERL launchers.
-
-What is automatic:
-
-- MBRL and MERL automatically use the shared dataset for WM evaluation.
-- Mini benchmark runs frequently.
-- Full benchmark runs every `shared_wm_eval_full_interval` WM eval cycles.
-
-What is not automatic:
-
-- The shared dataset is not generated by MBRL or MERL themselves.
-- The shared dataset is not used as WM training data.
-- If the shared dataset is missing, training can still continue, but WM eval may log `skipped_no_data` instead of real WM metrics.
-
-## 4. Built-In Safety Checks
-
-All three launchers already perform strict preflight checks before training starts.
-
-The checks cover:
-
-- PROJECT_NAME must match train_mode.
-- EXPERIMENT_NAME must contain the mode name.
-- GRPO requires n_samples > 1.
-- MFRL requires world_model.enable=False and wm_fine_tune=False.
-- MBRL requires world_model.enable=True and wm_fine_tune=False.
-- MERL requires world_model.enable=True and wm_fine_tune=True.
-
-Runtime strict assertions are also enabled in the trainer entry.
-
-## 5. Current Runtime Flow
-
-The current intended workflow is:
-
-1. Use the frozen SFT policy to generate one shared held-out WM eval dataset.
-2. Store that dataset under `tmp_files/wm_eval_shared/<dataset_name>/...`.
-3. Start MFRL, MBRL, or MERL training.
-4. During MBRL and MERL, world model evaluation loads the fixed mini and full splits from the shared root.
-5. During MBRL and MERL, WM training data still comes from each run's own rollout directory, not from the shared eval dataset.
-6. Compare policy metrics and WM metrics across modes only after all runs finish.
-7. The per-run rollout directory under tmp_files/rollout/<experiment_name>/ is temporary scratch space: stale global_step shards are now auto-cleaned, and imagined rollout shards are no longer persisted by default.
-
-In other words:
-
-- shared WM eval dataset = fixed benchmark only
-- each experiment's rollout directory = online training data for that experiment
-- tmp_files/rollout/<experiment_name>/train_real and eval_real are volatile step-local buffers, not long-term artifacts
-- tmp_files/rollout/<experiment_name>/*.mp4 are diagnostic media files and are independent from shard cleanup
-
-## 6. Primary Metrics To Watch
-
-| Category | Default log key | Meaning | Preferred trend |
-| --- | --- | --- | --- |
-| Success | val/test_score/all | Main task success / score | Higher |
-| Reward | train_reward/verifier | Real-rollout verifier reward proxy | Higher |
-| Reward | train_reward/reward_model | WM reward-head reward on imagined samples | Higher |
-| Reward | train_reward/all | Final reward actually used by PPO update | Higher |
-| Reward | critic/rewards/mean | Sequence-level reward mean | Higher |
-| WM Mix | wm/ratio_real, wm/ratio_wm | Real vs imagined policy-update mix | MERL should stay adaptive |
-| WM Loss | wm/loss, wm/loss_ema | WM supervision quality | Lower |
-| WM Confidence | wm/confidence_ema, wm/chunk_confidence_mean | Current imagined rollout trust | Higher |
-| WM Horizon | wm/current_imag_horizon, wm/next_imag_horizon | Adaptive imagined horizon | Stable and confidence-aligned |
-| WM Eval | wm/eval/psnr, wm/eval/ssim, wm/eval/lpips, wm/eval/reward_MSE | WM reconstruction / reward prediction quality | PSNR/SSIM higher, LPIPS/MSE lower |
-| Actor Split | actor/pg_loss_real, actor/pg_loss_imag | Real vs imagined actor loss | MERL should keep both under control |
-| Imag Weight | actor/imag_weight_mean | Mean imagined-sample weight | Should not collapse too early |
-
-Practical expectation by mode:
-
-- MFRL: no WM metrics is normal because WM is disabled.
-- MBRL: `train_reward/reward_model` and `train_reward/all` should not stay at 0 after the recent reward-chain fix.
-- MERL: both WM eval metrics and mixed real/imagined actor metrics should be present once the shared eval dataset exists.
-
-Logging timing notes:
-
-- All three launchers now default to `trainer.val_before_train=True`, so `val/test_score/all` and the initial fixed WM eval are emitted once before the first training update. Periodic validation still runs every `trainer.test_freq` steps, which is 5 in the current scripts.
-- When `world_model.fixed_eval_enabled=True`, `wm/eval/*` now comes from `tmp_files/wm_eval_shared/<dataset_name>/...` even during WM warmup, so PSNR/SSIM/LPIPS/reward metrics should be visible from the initial pre-train evaluation onward.
-- `actor_rollout_ref.world_model.training_steps_per_epoch` is the WM trainer-side total budget for one local WM training call. The per-PPO-step online WM budget is now controlled separately by `actor_rollout_ref.world_model.wm_inner_steps`. In the current launchers this is set to 100, which avoids accidentally running all 5000 WM inner updates inside every PPO outer step.
-- In active MERL, the PPO real/WM mix can now reach `wm_ratio=1.0` if the config allows it, but real environment interaction for WM supervision is decoupled from the PPO mix. The current MERL launcher now switches into a weak-update regime once the scheduler ratio reaches `0.95`: policy updates become prompt-only pure imagined steps, while WM online calibration is reduced to one real prompt every 5 steps by default. `wm/ratio_wm` is the actual policy-batch mix, and `wm/ratio_wm_scheduler` is the retained scheduler ratio that decides whether weak-update mode should stay active or fall back to normal MERL.
-- Actor and critic training checkpoints now default to lightweight local FSDP shard format for low-memory resume. This removes the old full-state CPU aggregation spike during `save_checkpoint`, but it also means same-world-size resume is the supported fast path. The trainer detects these shard checkpoints automatically and restores them after worker init; older HF-style checkpoints are still accepted.
-- Training-time online WM eval is now intentionally narrowed to the stable core set `psnr/ssim/lpips + reward/termination` by default. Heavy distribution/semantic metrics (`fid`, `fvd`, `clips`) are opt-in only via `world_model.eval_enable_fid=True`, `world_model.eval_enable_fvd=True`, and `world_model.eval_enable_clips=True`, so a failure in one heavy metric no longer blanks the whole `wm/eval/*` block.
-- If WM metrics still look sparse, check `wm/pred_valid_ratio`, `wm/update/steps_done`, `wm/update/skipped_no_data`, and `wm/eval/without_wm_update` first. These keys distinguish "no valid predicted video", "no train_real shards", and "eval happened without a same-step WM update".
-- If `wm/eval/video_metric_error_log` or `wm/eval/reward_error_log` appears, the evaluation entered the corresponding stage but only that local stage failed; `wm/eval/video_metrics_stage_failed=0` means the core video metrics still landed successfully even if an optional metric was skipped.
-- If `tmp_files/rollout/<experiment_name>/train_real` looks empty during training, that is expected in the new lifecycle: shards are written only on steps that actually need WM consumption, and the consumed step-local shards are deleted immediately after use rather than waiting for the next step.
-
-## 7. Expected Comparison Table
-
-| Mode | Policy update data | WM update data | Expected role | Expected outcome |
-| --- | --- | --- | --- | --- |
-| MFRL | Real only | Disabled | Lower-bound baseline | Lowest success / reward, no WM metrics |
-| MBRL | Imagined only | Real rollout supervision | Pure model-based reference | Better sample efficiency than MFRL, but less stable than MERL |
-| MERL | Real + imagined, confidence-weighted | Real rollout supervision only | Main method | Best success, best reward, best overall tradeoff |
-
-The target ranking is:
-
-```text
-MERL > MBRL > MFRL
-```
-
-Check it with both best success and final success, not only one snapshot.
-
-## 8. Result Summarization And Visualization
-
-Use the comparison script after the three runs finish.
-
-```bash
-python scripts/compare_mode_results.py \
-  --mfrl checkpoints/MFRL/<mfrl_experiment_dir> \
-  --mbrl checkpoints/MBRL/<mbrl_experiment_dir> \
-  --merl checkpoints/MERL/<merl_experiment_dir>
-```
-
-Optional explicit output directory:
-
-```bash
-python scripts/compare_mode_results.py \
-  --mfrl checkpoints/MFRL/<mfrl_experiment_dir> \
-  --mbrl checkpoints/MBRL/<mbrl_experiment_dir> \
-  --merl checkpoints/MERL/<merl_experiment_dir> \
-  --output-dir checkpoints/comparisons/libero10_three_mode_0421
-```
-
-Outputs:
-
-- Per experiment directory: analysis/merged_log.csv, analysis/metric_curves.csv, analysis/experiment_summary.md, analysis/experiment_dashboard.html
-- Cross-mode comparison directory: comparison_summary.csv, comparison_summary.md, comparison_dashboard.html, comparison_data.json
-- Mirrored cross-mode summary files are also written into each experiment's analysis directory for quick access.
-
-## 9. Practical Reading Order For Results
-
-1. Compare val/test_score/all first.
-2. Check train_reward/all, train_reward/verifier, train_reward/reward_model, and critic/rewards/mean.
-3. For MERL and MBRL, inspect wm/ratio_wm, wm/loss_ema, wm/confidence_ema, and wm/eval/*.
-4. For MERL specifically, verify actor/pg_loss_real and actor/pg_loss_imag are both active instead of one side collapsing.
-5. Only accept the run as healthy when the ranking and WM diagnostics agree.
-
-## 10. Common Usage Notes
-
-If you only want the answer to the most common confusion points:
-
-1. The shared WM eval data used later by MERL and MBRL is stored under `tmp_files/wm_eval_shared/<dataset_name>/...`.
-2. Yes, MERL and MBRL can automatically read it for WM evaluation if the root path and dataset name match.
-3. The generator's own run artifacts under `checkpoints/WM_EVAL_DATA/...` are not the dataset consumed by WM eval.
-4. If WM eval still shows `skipped_no_data`, first check whether `wm_eval_fixed_mini` and `wm_eval_fixed_full` were actually generated under the shared root.
+The two `real_world_wm_predict*.sh` scripts handle separate video/HDF5 inputs.
+Offline simulator training remains at `modules/ctrl_world/train_new.sh`.

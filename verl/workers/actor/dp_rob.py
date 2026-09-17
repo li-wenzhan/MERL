@@ -22,7 +22,6 @@ import torch
 import torch.distributed as dist
 import verl.utils.torch_functional as verl_F
 from codetiming import Timer
-from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from verl import DataProto

@@ -83,7 +83,7 @@ class wm_args:
     motion_bucket_id: int = 127
     fps: int = 4
     guidance_scale: float = 2
-    num_inference_steps: int = 30  # 缩短一点？加速推理，原 50, trade-off项
+    num_inference_steps: int = 30  # Reduced from 50 for the legacy speed/quality tradeoff.
     decode_chunk_size: int = 8
     width: int = 320
     height: int = 192

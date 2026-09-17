@@ -1,67 +1,87 @@
-# Four-H100 preparation and qualitative comparison
+# CCI preparation and ACP execution
 
-## Current execution gate
+CCI is the single-H100 development environment. Use it for code, assets and small
+runtime checks. Actual experiments run as ACP jobs on a node with four H100 80GB
+GPUs. CCI GPU inventory is not an ACP resource-allocation problem.
 
-The supplied workspace currently exposes one H100. LIBERO-PRO and the requested
-OpenVLA-OFT SFT checkpoint have now been acquired. SVD/CLIP backbone file preflight
-passes, but the WM warm-start is disabled. Single-device preflight does not establish
-distributed training readiness. See the asset and validation notes below.
+## Unified launcher
 
-Allocate four visible 80GB GPUs and select the intended trained Ctrl-World
-checkpoint. Confirm which simulator checkpoint contains a
-trained reward proxy. A generic video backbone is not an adequate MBRL baseline.
+`python -m merl.launch` composes Hydra directly from `configs/launch_profiles.json`.
+Duplicated 1/3/4-GPU launch scripts were removed. Algorithm settings were extracted
+from the former four-GPU scripts at revision `8de7bb6`; the profiles retain their
+legacy differences (including learning rate, temperature and confidence guards).
+They do **not** activate recursive no-oracle imagination or establish matched
+paper budgets. See [implementation audit](implementation_audit.md).
 
-## Portable entrypoint
-
-`python -m merl.launch` wraps the existing four-GPU scripts. It removes the need
-to edit their author-specific paths, fixes the 3-actor + 1-WM layout, rejects reuse
-of experiment directories and writes a launch manifest with source hashes, Git
-revision, package versions, GPU information and exit status. Existing scripts also
-accept trailing Hydra overrides and environment overrides for asset/config paths.
-
-This is an entrypoint to **legacy debug profiles**, not a matched paper reproduction.
-It does not activate the new no-oracle module. See [implementation audit](implementation_audit.md).
-The manifest records explicit overrides and the script hash; the existing trainer
-prints its resolved Hydra config in the run log. Preserve both. It is not a complete
-RNG/resume checkpoint and does not fix hardcoded internal seeds.
+MERL/MBRL reserve three actor GPUs plus one WM trainer GPU by default. MFRL uses
+three actor GPUs, retaining the same actor parallelism; the fourth is unused.
+WM inference copies may still occupy actor GPUs. `--actor-gpus` scales per-rank
+batch settings and is useful for CCI real-only checks.
 
 ```bash
-cd /path/to/MERL
-source /path/to/merl/bin/activate
-
-# Side-effect-free command review; works without a GPU or model files.
 python -m merl.launch --mode MERL \
-  --sft-checkpoint /models/openvla-oft \
-  --eval-config /configs/libero-pro.yaml \
-  --wm-config /configs/wm_online_config.py \
-  --shared-wm-eval /data/wm_eval_shared/libero_10 \
-  --experiment merl_smoke_001 --dry-run -- trainer.total_training_steps=1
-
-# Run only after all gates below pass: omit --dry-run.
+  --sft-checkpoint /models/openvla-oft --wm-checkpoint /models/ctrl-world.pt \
+  --experiment merl_smoke_001 --check
 ```
 
-The same interface accepts `--mode MFRL` and `--mode MBRL`. The modes retain their
-original hyperparameters, which are currently **not matched**. Training-step,
-temperature and policy-update differences must be resolved before comparing gains.
-The wrapper deliberately starts fresh; use the legacy entrypoint for an explicit
-resume until the complete state-restoration audit is finished.
+`--check` verifies assets and resolved config without Ray/GPU allocation.
+`--dry-run` only prints the command. `--render-check` additionally resets a real
+environment. For ACP execution replace `--check` with `--smoke`, then remove
+`--smoke` only after verifying a real update. Smoke means task 0, 16 environment
+steps, one outer update, one WM inner step and two diffusion inference steps;
+Accuracy filtering is disabled in smoke runs so all-failed short rollouts can
+reach the update path; zero GRPO signal is possible. This tests plumbing, not
+success or simulator fidelity.
 
-## Gates, in order
+Select `--job evaluate` for real-only evaluation of an exported actor or
+`--job collect` with MFRL for fixed WM evaluation data. The default `--wm-eval off`
+allows pipeline bring-up without fixed shards, and produces no fixed WM metrics.
+Use `--wm-eval fixed --shared-wm-eval /data/wm_eval` after collecting both splits.
+
+Each fresh run writes its resolved config, command, source hashes, Git revision,
+package versions, GPU information and final status into `launch_manifest.json`,
+plus a complete `run.log`. These are not a full RNG/optimizer resume checkpoint.
+Source SFT weights are symlinked into run-specific actor assets, never overwritten.
+Existing run directories and nonempty collection splits are rejected.
+
+## Private ACP job payload
+
+The deployment script is `tmp_files/acp_merl.sh` (intentionally ignored by Git).
+It selects the supplied shared filesystem repo, environment and model paths, then
+calls the maintained launcher. Submit it as the ACP job command; platform-specific
+submission/resource syntax must come from the actual ACP configuration.
+
+```bash
+bash tmp_files/acp_merl.sh MERL train merl_smoke_001 --smoke
+bash tmp_files/acp_merl.sh MBRL train mbrl_smoke_001 --smoke
+bash tmp_files/acp_merl.sh MFRL train mfrl_smoke_001 --smoke
+# CCI asset check; no four-GPU allocation needed.
+bash tmp_files/acp_merl.sh MERL train asset_check_001 --check
+```
+
+Override `MERL_REPO`, `MERL_ENV`, `SFT_CHECKPOINT`, `WM_CHECKPOINT`, `OUTPUT_ROOT`,
+`ACTOR_GPUS` or `SHARED_WM_EVAL` via environment variables. Never replace ACP's
+`CUDA_VISIBLE_DEVICES` with physical indices from CCI. EGL is the default;
+`scripts/runtime/libero_glx_runtime.sh` is available for explicit GLX setups.
+
+## Validation gates
 
 1. CPU contracts: `python -m unittest discover -s tests -v`.
-2. GPU inventory: `nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv`.
-3. Asset/config checks:
-   ```bash
-   python scripts/preflight_openvla_oft.py --checkpoint /models/openvla-oft
-   python scripts/preflight_world_model_backbone.py --config /configs/wm_online_config.py
-   python scripts/preflight_libero_pro_compat.py --config /configs/libero-pro.yaml
-   ```
-4. One-task rendering: configure GLX/EGL using `examples/libero_glx_runtime.sh`,
-   then run `scripts/preflight_libero_env_service.py --config /configs/libero-pro.yaml`.
-5. Existing data/reward contracts: `PYTHONPATH=$PWD python scripts/verify_merl_memory_contract.py`.
-6. One-stage four-device run. Verify finite loss/gradients, sampled-token coverage,
-   actual real-environment transitions, completed trajectories, and checkpoint load.
-7. Only then collect the common evaluation panel and larger experiments.
+2. `PYTHONPATH=$PWD python scripts/verify_merl_memory_contract.py`.
+3. Asset/config checks with `--check`; strict simulator load with
+   `scripts/preflight_world_model_backbone.py --config configs/wm_online_config.py
+   --checkpoint /models/ctrl-world.pt --load-model`.
+4. Environment reset/step and finite SFT actions on its saved observation.
+5. Real-only closed-loop CCI smoke, then ACP actor/WM worker initialization.
+6. One ACP update: finite loss/gradients, valid token masks, actual transition
+   counts and checkpoint saving. A process starting is not an update passing.
+7. Common evaluation panel, fixed WM dataset and larger experiments.
+
+The supplied Ctrl-World checkpoint strictly matches all 2,665 state entries.
+The WM trainer now raises on checkpoint mismatch instead of silently continuing.
+This proves structural compatibility, not reward calibration or predictive quality.
+When loading this full checkpoint, the reward backbone does not download redundant
+ImageNet weights; its parameters come from the checkpoint.
 
 ## Visualization protocol
 
@@ -133,3 +153,13 @@ This uses local MERL model classes, one camera, discrete actions, eager attentio
 BF16 and no proprioception, and leaves downloaded checkpoint files unchanged.
 It checks finite `[8,7]` actions and refuses missing/mismatched model parameters;
 it is not the distributed actor or a closed-loop policy evaluation.
+
+## Evaluation integrity fixes
+
+Task subsets are filtered in the dataset before dispatch; unexpected task IDs
+raise instead of being silently relabeled. Evaluation order is deterministic and
+the final partial batch is retained. Distributed padding results are excluded
+from metrics and counted as `validation/padding_rollouts`. Invalid rollouts fail
+the maintained evaluation job instead of silently reducing its denominator.
+Collection requires a trial count divisible by actor ranks; use one actor for
+small fixed datasets. These changes can change results relative to older scripts.

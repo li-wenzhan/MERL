@@ -16,7 +16,7 @@ Sources: local submission PDF (28 pages) and one-page CoRL rebuttal under
 | Stage scheduler: EMA error, inverse-power confidence, horizon `C..4C` | Existing path mixes training-noise loss, exponential confidence, cooldown and weak-update logic; four-GPU MERL launcher uses horizons 128..192 | Use the paper scheduler explicitly for reproduction; do not conflate debug defaults with paper settings |
 | Full MERL uses imagined proxy progress | Four-GPU MERL launcher disables proxy rewards, requires successful real anchors and caps imagined weight | This is a conservative alternative behavior, not the full method described by the paper |
 | Matched budgets and protocol | Mode scripts differ in batch sizes, optimizer/weight guards and collection paths | Build a shared resolved protocol and record actual environment interaction, not only online-step count |
-| Reliable initialization and resume | WM config lists a checkpoint but `load_from_ckpt=False`; `WorldModelTrainer.save_world_model` saves model weights only | Verify actual loaded assets; optimizer/RNG/scheduler state need an explicit full-resume contract |
+| Reliable initialization and resume | Unified launcher now requires and enables an explicit WM checkpoint; strict load failures abort. `WorldModelTrainer.save_world_model` still saves model weights only | Verify actual loaded assets; optimizer/RNG/scheduler state need an explicit full-resume contract |
 
 ## Architecture map
 
@@ -62,5 +62,5 @@ imports, launch/config references and a representative runtime regression.
 
 On 2026-09-17 the supplied SSH workspace exposed one H100 80GB (`nvidia-smi`,
 also only one numbered `/dev/nvidia*` device). It had the same clean baseline
-commit and PyTorch `2.12.0+cu130`. Four-GPU execution is therefore pending resource
-allocation; single-device preflight is useful but cannot validate FSDP collectives.
+commit and PyTorch `2.12.0+cu130`. The user confirmed this is CCI for development; actual four-GPU execution
+runs on ACP. Single-device preflight cannot validate multi-rank FSDP collectives.

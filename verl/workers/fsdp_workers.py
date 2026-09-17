@@ -3445,11 +3445,8 @@ class WorldModelTrainer:
         if ckpt_path is not None:
             # load on cpu then to device
             state_dict = load_trusted_state_dict(ckpt_path, map_location="cpu")
-            try:
-                self.world_model.load_state_dict(state_dict, strict=True)
-                print(f"[WM Trainer] Loaded checkpoint from {ckpt_path}")
-            except Exception as e:
-                print(f"[WM Trainer] Warning: loading checkpoint failed: {e}")
+            self.world_model.load_state_dict(state_dict, strict=True)
+            print(f"[WM Trainer] Loaded checkpoint from {ckpt_path}")
 
         # optimizer
         self.wm_optimizer = torch.optim.AdamW(

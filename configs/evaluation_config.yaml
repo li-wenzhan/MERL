@@ -4,7 +4,7 @@
 libero_pro_root: "/mnt/afs/task3_2/L202500276_lwz/benchmark/LIBERO-PRO" # ! todo: set to your local LIBERO_PRO clone root
 
 # todo: change the perturbation type (single)
-#! 暂时缺少 env 的，要自己生成
+# Environment perturbations require generated or downloaded OOD assets.
 use_environment: true
 use_swap: false
 use_object: false

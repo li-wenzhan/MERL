@@ -13,8 +13,18 @@
 # limitations under the License.
 
 from .base import BasePPOActor
-from .dp_actor import DataParallelPPOActor
-from .dp_prime import DataParallelPRIME
-from .dp_rob import RobDataParallelPPOActor
 
 __all__ = ["BasePPOActor", "DataParallelPPOActor", "DataParallelPRIME","RobDataParallelPPOActor"]
+
+
+def __getattr__(name):
+    """Load only the requested actor and its optional backend dependencies."""
+    from importlib import import_module
+
+    modules = {"DataParallelPPOActor": ".dp_actor", "DataParallelPRIME": ".dp_prime",
+               "RobDataParallelPPOActor": ".dp_rob"}
+    if name not in modules:
+        raise AttributeError(name)
+    value = getattr(import_module(modules[name], __name__), name)
+    globals()[name] = value
+    return value

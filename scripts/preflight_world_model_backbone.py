@@ -30,6 +30,8 @@ def _load_wm_args(config_path: str):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, help="configs/wm_online_config.py")
+    parser.add_argument("--checkpoint", help="Override and require the trained simulator checkpoint")
+    parser.add_argument("--load-model", action="store_true", help="Strictly load all simulator parameters on CPU")
     args = parser.parse_args()
 
     repo_root = str(Path(__file__).resolve().parents[1])
@@ -45,6 +47,9 @@ def main() -> None:
 
     cfg_path = _require_file("world-model config", args.config)
     wm_args = _load_wm_args(cfg_path)
+    if args.checkpoint:
+        wm_args.ckpt_path = _require_file("Ctrl-World checkpoint", args.checkpoint)
+        wm_args.load_from_ckpt = True
 
     svd_resolved_path, svd_kwargs, svd_layout = prepare_local_hf_model_dir(
         getattr(wm_args, "svd_model_path", ""),
@@ -57,6 +62,16 @@ def main() -> None:
 
     ckpt_path = resolve_ctrl_world_ckpt_path(wm_args)
     warm_start = ckpt_path or "disabled"
+    if args.load_model:
+        if not ckpt_path:
+            raise SystemExit("[preflight] --load-model requires a trained checkpoint")
+        from modules.ctrl_world.model_loading import load_trusted_state_dict
+        from modules.ctrl_world.models.ctrl_world_new import CtrlWorld
+
+        model = CtrlWorld(wm_args)
+        state = load_trusted_state_dict(ckpt_path, map_location="cpu")
+        model.load_state_dict(state, strict=True)
+        print(f"[preflight] strict simulator load OK: {len(state)} entries", flush=True)
     print(
         "[preflight] world-model backbone compatibility OK "
         f"(torch={torch.__version__}, "

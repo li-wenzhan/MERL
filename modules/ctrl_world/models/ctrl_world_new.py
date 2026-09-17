@@ -292,6 +292,8 @@ class CtrlWorld(nn.Module):
             dropout=0.1,
             freeze_vision=True,
             in_channels=3,
+            # A full simulator checkpoint contains the reward backbone too.
+            pretrained_backbone=not bool(getattr(args, "load_from_ckpt", False)),
         )
 
     def encode_img_to_latent(self, img: torch.Tensor) -> torch.Tensor:

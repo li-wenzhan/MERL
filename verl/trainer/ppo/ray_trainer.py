@@ -1138,16 +1138,19 @@ class RayTrainer(object):
                 self.config.data.task_suite_name,
                 num_trials_per_task=self.config.data.num_trials_per_task,
                 train_val="train",
+                task_ids=getattr(rollout_cfg, "allowed_task_ids", None),
             )
             self.val_dataset = LIBERO_Dataset(
                 self.config.data.task_suite_name,
                 num_trials_per_task=self.config.data.num_trials_per_task,
                 train_val="valid",
+                task_ids=getattr(rollout_cfg, "allowed_task_ids", None),
             )
             self.rollout_dataset = LIBERO_Dataset(
                 self.config.data.task_suite_name,
                 num_trials_per_task=self.config.data.num_trials_per_task,
                 train_val="rollout",
+                task_ids=getattr(rollout_cfg, "allowed_task_ids", None),
             )
 
         elif "robotwin" in self.config.data.task_suite_name:
@@ -1183,8 +1186,8 @@ class RayTrainer(object):
         self.val_dataloader = DataLoader(
             dataset=self.val_dataset,
             batch_size=self.config.data.val_batch_size,
-            shuffle=True,
-            drop_last=True,
+            shuffle=False,
+            drop_last=False,
             collate_fn=collate_fn,
         )
         self.rollout_dataloader = DataLoader(
@@ -1197,7 +1200,11 @@ class RayTrainer(object):
         print(f"Size of val dataloader: {len(self.val_dataloader)}")
         print(f"Size of rollout dataloader: {len(self.rollout_dataloader)}")
 
-        assert len(self.train_dataloader) >= 1
+        if self.config.trainer.get("rollout_before_train", False):
+            if len(self.rollout_dataset) % int(self.config.trainer.n_gpus_per_node):
+                raise ValueError("Collection trials must divide evenly across actor GPUs; use --actor-gpus 1")
+        elif not self.config.trainer.get("val_only", False):
+            assert len(self.train_dataloader) >= 1
         assert len(self.val_dataloader) >= 1
         assert len(self.rollout_dataloader) >= 1
 
@@ -2343,7 +2350,22 @@ class RayTrainer(object):
             if eval_rollout_max_steps > 0:
                 test_batch.meta_info["max_steps"] = eval_rollout_max_steps
 
-            test_output_gen_batch = self.actor_rollout_wg.generate_sequences(test_batch)
+            # Preserve every requested trial, including an incomplete final batch.
+            original_count = len(test_batch)
+            world_size = int(self.actor_rollout_wg.world_size)
+            padding = (-original_count) % world_size
+            dispatch_batch = test_batch
+            if padding:
+                duplicates = test_batch.slice(torch.arange(padding) % original_count)
+                dispatch_batch = DataProto.concat([test_batch, duplicates])
+            test_output_gen_batch = self.actor_rollout_wg.generate_sequences(dispatch_batch)
+            if test_output_gen_batch is None or len(test_output_gen_batch) != len(dispatch_batch):
+                raise RuntimeError("Evaluation must return one result per dispatched trial")
+            if padding:
+                test_output_gen_batch = test_output_gen_batch.slice(slice(0, original_count))
+            metric_dict["validation/padding_rollouts"] = (
+                metric_dict.get("validation/padding_rollouts", 0) + padding
+            )
             strict_validate_rollout = bool(
                 getattr(self.config.trainer, "strict_validate_rollout", False)
             )

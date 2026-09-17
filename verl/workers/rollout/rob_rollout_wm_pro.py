@@ -3694,49 +3694,13 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
 
     @staticmethod
     def sanitize_task_ids(prompts: DataProto, allowed_ids: Optional[List[int]]):
-        """
-        外置函数：处理 task_id，将不在 allowed_ids 中的值强制修改为列表内的值（基于索引循环）
-        """
+        """Validate task selection; never relabel a requested evaluation task."""
         if not allowed_ids or "task_id" not in prompts.batch:
             return prompts
-        num_allowed = len(allowed_ids)
-
-        # 获取原始的 task_id (假设是 PyTorch Tensor)
-        original_task_ids = prompts.batch["task_id"]
-
-        # 1. 生成“循环索引”对应的 ID
-        # 逻辑：第 i 个元素如果要改，就改成 allowed_ids[i % num_allowed]
-        indices = torch.arange(len(original_task_ids), device=original_task_ids.device)
-        allowed = torch.tensor(
-            allowed_ids,
-            dtype=original_task_ids.dtype,
-            device=original_task_ids.device,
-        )
-        cycle_ids = allowed[indices % num_allowed]
-        view_shape = (len(original_task_ids),) + (1,) * max(
-            0, original_task_ids.dim() - 1
-        )
-        cycle_ids = cycle_ids.view(view_shape).expand_as(original_task_ids)
-
-        # 2. 生成 Mask：判断原始 ID 是否在允许列表中
-        # isin_allowed = original_task_ids.unsqueeze(1).eq(torch.tensor(allowed_ids, device=original_task_ids.device).unsqueeze(0)).any(1)
-        # 更简单的写法 (PyTorch >= 1.10):
-        isin_allowed = torch.isin(
-            original_task_ids,
-            allowed,
-        )
-
-        # 3. 张量替换：Where 原 ID 合法，保留；否则使用循环 ID
-        processed_task_ids = torch.where(isin_allowed, original_task_ids, cycle_ids)
-
-        # 4. 存回 prompts 对象
-        prompts.batch["task_id"] = processed_task_ids
-        if not bool(isin_allowed.all().detach().item()):
-            print(
-                f"[LIBERO task ids] remapped unsupported ids to allowed_task_ids={allowed_ids}",
-                flush=True,
-            )
-
+        task_ids = prompts.batch["task_id"]
+        allowed = torch.as_tensor(allowed_ids, dtype=task_ids.dtype, device=task_ids.device)
+        if not bool(torch.isin(task_ids, allowed).all().item()):
+            raise ValueError("Task IDs outside allowed_task_ids; filter the dataset before dispatch")
         return prompts
 
     # 1. generate_minibatch: pure env mode
