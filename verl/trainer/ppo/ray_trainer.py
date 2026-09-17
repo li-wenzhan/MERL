@@ -1998,7 +1998,9 @@ class RayTrainer(object):
             trainer_rank,
             wm_overrides,
         )
-        init_res = ray.get(self.wm_trainer.init_model.remote())
+        from merl.ray_diagnostics import startup_get
+        init_res = startup_get(self.wm_trainer.init_model.remote(),
+                               stage="world model trainer initialization", timeout=900)
         assert init_res.get("inited", False), "wm trainer has not been initialized."
         self._sync_world_model_from_resume(load_into_wm_trainer=True)
         return True
@@ -2586,6 +2588,7 @@ class RayTrainer(object):
 
     def init_workers(self):
         """Init resource pool and worker group"""
+        print("[startup] preparing worker resources and resume paths", flush=True)
         # Apply resume path overrides before any worker loads model weights.
         self._prepare_resume_for_worker_init()
         self.resource_pool_manager.create_resource_pool()
@@ -2656,6 +2659,7 @@ class RayTrainer(object):
         all_wg = {}
         self.wg_dicts = []
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
+            print(f"[startup] creating worker group: roles={list(class_dict)} layout={resource_pool.store}", flush=True)
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
             wg_dict = self.ray_worker_group_cls(
                 resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls
@@ -2679,7 +2683,9 @@ class RayTrainer(object):
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
         self.actor_rollout_wg = all_wg["actor_rollout"]
-        self.actor_rollout_wg.init_model()
+        from merl.ray_diagnostics import startup_get
+        startup_get(self.actor_rollout_wg.execute_all_async("actor_rollout_init_model"),
+                    stage="actor model and rollout initialization", timeout=900)
         self._restore_policy_from_resume()
         if self.config.actor_rollout_ref.world_model.enable:
             # Keep rollout-side WM consistent with resumed checkpoint, even when no wm_trainer is used.

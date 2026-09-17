@@ -15,12 +15,12 @@ from merl.presentation_run import main
 
 
 class PresentationTests(unittest.TestCase):
-    def test_failed_mode_does_not_skip_remaining_modes_or_claim_success(self):
+    def test_continue_on_error_preserves_failures_and_runs_remaining_modes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "comparison"
             protocol = dict(id="panel", task_ids=[0], trials=3, trial_ids=[10, 11, 12])
             argv = ["presentation", "--sft-checkpoint", tmp, "--wm-checkpoint", tmp,
-                    "--output", str(root)]
+                    "--output", str(root), "--continue-on-error"]
             with patch("sys.argv", argv), patch("merl.presentation_run.protocol_for", return_value=protocol), \
                  patch("merl.presentation_run.subprocess.run", side_effect=[
                      SimpleNamespace(returncode=17), SimpleNamespace(returncode=0),
@@ -39,6 +39,22 @@ class PresentationTests(unittest.TestCase):
                 self.assertIn("data.eval_trial_offset=10", info["command"])
                 self.assertIn("trainer.max_training_seconds=900", info["command"])
                 self.assertIn("actor_rollout_ref.model.checkpoint_format=hf_full_state_dict", info["command"])
+
+    def test_failed_mode_stops_remaining_modes_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "comparison"
+            argv = ["presentation", "--sft-checkpoint", tmp, "--wm-checkpoint", tmp,
+                    "--modes", "MBRL", "ONLINE_MBRL", "MERL", "--output", str(root)]
+            with patch("sys.argv", argv), patch("merl.presentation_run.protocol_for", return_value={"id": "panel"}), \
+                 patch("merl.presentation_run.subprocess.run", return_value=SimpleNamespace(returncode=17)) as run, \
+                 patch("merl.presentation_report.build_report") as report:
+                with self.assertRaises(SystemExit) as result:
+                    main()
+            self.assertEqual(result.exception.code, 1)
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(report.call_count, 1)
+            self.assertFalse((root / "ONLINE_MBRL").exists())
+            self.assertEqual(json.loads((root / "MBRL/run_info.json").read_text())["exit_code"], 17)
 
     def test_saved_video_keyframes_and_incomplete_panel(self):
         import imageio.v2 as imageio

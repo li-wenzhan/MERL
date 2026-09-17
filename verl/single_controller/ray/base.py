@@ -82,7 +82,8 @@ class RayResourcePool(ResourcePool):
             for idx, bundles in enumerate(pg_scheme)
         ]
 
-        ray.get([pg.ready() for pg in pgs])
+        from merl.ray_diagnostics import startup_get
+        startup_get([pg.ready() for pg in pgs], stage=f"placement groups {pg_name_prefix}", timeout=180)
 
         self.pgs = pgs
         return pgs
@@ -262,17 +263,28 @@ class RayWorkerGroup(WorkerGroup):
                                            num_gpus=num_gpus)
                 self._workers.append(worker)
                 self._worker_names.append(name)
+                print(f"[startup] submitted worker {name} rank={rank}/{world_size}", flush=True)
 
                 if rank == 0:
                     register_center_actor = None
+                    # Surface constructor/import failures instead of hiding them behind
+                    # the register-center poll until its timeout.
+                    ready_ref = worker.__ray_ready__.remote()
                     for _ in range(360):
                         if f"{self.name_prefix}_register_center" not in list_named_actors():
+                            ready, _pending = ray.wait([ready_ref], timeout=0)
+                            if ready:
+                                ray.get(ready_ref)
+                            if _ % 30 == 0:
+                                print(f"[startup] waiting for rank-zero registration: {name} ({_}s)", flush=True)
                             time.sleep(1)
                         else:
                             register_center_actor = ray.get_actor(f"{self.name_prefix}_register_center")
                             break
                     assert register_center_actor is not None, f"failed to get register_center_actor: {self.name_prefix}_register_center in {list_named_actors(all_namespaces=True)}"
-                    rank_zero_info = ray.get(register_center_actor.get_rank_zero_info.remote())
+                    from merl.ray_diagnostics import startup_get
+                    rank_zero_info = startup_get(register_center_actor.get_rank_zero_info.remote(),
+                                                 stage="rank-zero rendezvous metadata", timeout=180)
                     self._master_addr, self._master_port = rank_zero_info['MASTER_ADDR'], rank_zero_info['MASTER_PORT']
                     # print(f"rank_zero_info: {rank_zero_info}")
                     # print(f"master_addr: {self._master_addr}, master_port: {self._master_port}")

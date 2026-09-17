@@ -63,6 +63,10 @@ Every invocation creates a new `tmp_files/ppt_runs/<UTC timestamp>/`:
 - `MODE/episodes/step_*/task_*/`: complete episode MP4, up to five unaltered PNG
   keyframes and JSON outcome/provenance. Invalid episodes are recorded too.
 - `runs/MODE/experiment/`: resolved config, metrics, checkpoints and run log.
+- `runs/MODE/experiment/ray_logs/`: periodically saved Ray worker, scheduler and
+  runtime-environment text log tails (up to 256 KiB per file). `index.json`
+  records original sizes and capture time. These survive loss of node-local
+  `/tmp`; an abrupt platform kill can lose the last capture interval.
 - `logs/`: per-mode complete stdout/stderr and exit/timing records. The outer
   orchestration log also goes to `tmp_files/acp_logs/`.
 - `report/task_XX_trial_YY.mp4` and `.png`: side-by-side robot videos and contact
@@ -77,8 +81,9 @@ time. Shorter episodes hold the last frame with an explicit ended label. Raw
 episode frames and action-step counts are preserved separately. Rank-padding
 episodes do not enter the exported evaluation panel.
 
-The report refreshes after each mode; a failed mode does not prevent launching
-the remaining modes. Rebuild from saved artifacts without loading models:
+The report refreshes after each mode. A failed mode stops the sequence by default
+to avoid repeating a shared infrastructure failure; `--continue-on-error`
+explicitly attempts the remaining modes. Rebuild from saved artifacts without loading models:
 
 ```bash
 python -m merl.presentation_report tmp_files/ppt_runs/RUN_ID

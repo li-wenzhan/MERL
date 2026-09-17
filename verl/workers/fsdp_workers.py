@@ -212,7 +212,12 @@ def _ensure_dist_process_group(backend: str = "nccl") -> None:
     if dist.is_initialized():
         return
     _guard_dist_init_env()
-    dist.init_process_group(backend=backend)
+    from datetime import timedelta
+    print(f"[startup] distributed init: backend={backend} rank={os.environ.get('RANK')} "
+          f"world_size={os.environ.get('WORLD_SIZE')} master={os.environ.get('MASTER_ADDR')}:"
+          f"{os.environ.get('MASTER_PORT')} CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}", flush=True)
+    dist.init_process_group(backend=backend, timeout=timedelta(seconds=600))
+    print(f"[startup] distributed init ready: rank={dist.get_rank()}", flush=True)
 
 
 def _find_vla_dataset_statistics_file(*model_dirs: Optional[str]) -> Optional[str]:

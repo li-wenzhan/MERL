@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from merl.modes import MODES, ONLINE_WM_MODES, validate_online_mbrl
+from merl.ray_diagnostics import RayLogCapture
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "configs/launch_profiles.json"
@@ -259,6 +260,7 @@ def main():
                     ROOT / "merl/launch.py", ROOT / "verl/trainer/main_ppo.py",
                     ROOT / "merl/episode_artifacts.py", ROOT / "verl/utils/dataset/rob_dataset.py",
                     ROOT / "merl/modes.py",
+                    ROOT / "merl/ray_diagnostics.py", ROOT / "verl/single_controller/ray/base.py",
                     ROOT / "verl/trainer/ppo/ray_trainer.py", ROOT / "verl/workers/fsdp_workers.py",
                     ROOT / "verl/workers/actor/dp_rob.py", ROOT / "verl/workers/rollout/rob_rollout_wm_pro.py")},
                 "packages": {name: importlib.metadata.version(name) for name in ("torch", "transformers", "ray", "numpy")},
@@ -276,7 +278,12 @@ def main():
                        cwd=ROOT, env=env, check=True)
         manifest["status"] = "running"
         save()
-        with (run_dir / "run.log").open("w", encoding="utf-8") as log:
+        ray_log_root = run_dir / "ray_logs"
+        manifest["ray_log_tails"] = str(ray_log_root)
+        save()
+        print(f"[launch] preserving Ray runtime log tails: {ray_log_root}", flush=True)
+        with RayLogCapture(resolved.get("trainer", {}).get("ray_tmpdir", settings["trainer.ray_tmpdir"]), ray_log_root), \
+                (run_dir / "run.log").open("w", encoding="utf-8") as log:
             process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT, text=True, bufsize=1)
             try:

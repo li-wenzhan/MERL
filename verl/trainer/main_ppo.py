@@ -1175,6 +1175,7 @@ def main_task(config):
         resource_pool_spec=resource_pool_spec, mapping=mapping
     )
 
+    print("[startup] constructing trainer", flush=True)
     trainer = RayTrainer(
         config=config,
         tokenizer=tokenizer,
@@ -1184,7 +1185,14 @@ def main_task(config):
         reward_fn=reward_fn,
         val_reward_fn=val_reward_fn,
     )
-    trainer.init_workers()
+    print("[startup] trainer constructed; initializing distributed workers", flush=True)
+    import faulthandler
+    faulthandler.dump_traceback_later(120, repeat=True)
+    try:
+        trainer.init_workers()
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+    print("[startup] all workers initialized; entering training/evaluation", flush=True)
     if train_mode == "MFRL" or policy_evaluation:
         trainer.fit()
     else:

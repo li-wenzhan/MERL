@@ -63,6 +63,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--mode", choices=("ALL", *MODES), default="ALL")
     p.add_argument("--modes", nargs="+", choices=MODES, help="Explicit sequential subset; use instead of --mode")
+    p.add_argument("--continue-on-error", action="store_true", help="Attempt remaining modes after a failure")
     p.add_argument("--job", choices=("train", "evaluate"), default="train")
     p.add_argument("--label", help="Evaluation label, e.g. SFT; never changes the policy")
     p.add_argument("--sft-checkpoint", type=Path, required=True)
@@ -144,6 +145,10 @@ def main():
         build_report(root)
         if not info["assets_unchanged"]:
             raise RuntimeError("Evaluation assets changed; do not compare these runs")
+        if result.returncode != 0 and not args.continue_on_error:
+            print(f"[presentation] stopping after {label} failed; remaining modes were not started. "
+                  f"Inspect {root / 'logs'} and {info['experiment_dir']}/ray_logs", flush=True)
+            break
     print(f"[presentation] report={root / 'report'}", flush=True)
     raise SystemExit(1 if failed else 0)
 
