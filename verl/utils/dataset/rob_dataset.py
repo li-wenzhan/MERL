@@ -87,12 +87,16 @@ class LIBERO_Dataset(Dataset):
         num_trials_per_task=50,
         train_val="train",
         task_ids=None,
+        trial_offset=0,
     ):
 
         self.task_suite_name = task_suite_name
         self.num_trials_per_task = num_trials_per_task
         self.train_val = train_val
         self.task_ids = task_ids
+        if not isinstance(trial_offset, int) or isinstance(trial_offset, bool) or trial_offset < 0:
+            raise ValueError("trial_offset must be a nonnegative integer")
+        self.trial_offset = trial_offset
         self._read_files_and_tokenize()
 
     def _read_files_and_tokenize(self):
@@ -115,13 +119,7 @@ class LIBERO_Dataset(Dataset):
             "libero_spatial",
         ]:
             for task_id in selected_ids:
-                if self.train_val == "train":
-                    trials_range = list(range(0, int(self.num_trials_per_task)))
-                elif self.train_val == "valid":
-                    trials_range = list(range(0, int(self.num_trials_per_task)))
-                else:
-                    # raise ValueError
-                    trials_range = list(range(0, int(self.num_trials_per_task)))
+                trials_range = range(self.trial_offset, self.trial_offset + int(self.num_trials_per_task))
                 for i in trials_range:
                     data = {
                         "task_suite_name": self.task_suite_name,

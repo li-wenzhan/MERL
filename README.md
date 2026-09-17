@@ -88,6 +88,11 @@ fixed splits with `examples/generate_shared_wm_eval_dataset.sh`, then enable it
 using `--wm-eval fixed --shared-wm-eval /data/wm_eval`. Missing data fails early.
 See [examples](examples/README.md) and the [runbook](docs/h100_runbook.md).
 
+For a sequential short-budget MFRL/MBRL/MERL run with saved real-environment
+videos, disjoint online train/evaluation states and PPT-ready comparison panels,
+see the [presentation pilot](docs/presentation_pilot.md). Its defaults target a
+small exploratory run on one four-GPU allocation, not a performance claim.
+
 ## Validation and experiments
 
 ```bash

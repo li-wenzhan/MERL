@@ -4,6 +4,11 @@
 MFRL, with `--job train|evaluate|collect`. Devices and assets are arguments, not
 separate scripts. Internal helpers now live in `scripts/`.
 
+`run_presentation.sh` runs short training and complete real-environment evaluation
+sequentially for all three modes on one four-GPU allocation. It saves checkpoints,
+all requested episode videos, keyframes and comparison reports. See the
+[presentation pilot](../docs/presentation_pilot.md) for budgets and limitations.
+
 ## Fixed WM evaluation data
 
 ```bash

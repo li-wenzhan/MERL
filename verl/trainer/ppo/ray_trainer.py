@@ -1145,6 +1145,7 @@ class RayTrainer(object):
                 num_trials_per_task=self.config.data.num_trials_per_task,
                 train_val="valid",
                 task_ids=getattr(rollout_cfg, "allowed_task_ids", None),
+                trial_offset=int(self.config.data.get("eval_trial_offset", 0)),
             )
             self.rollout_dataset = LIBERO_Dataset(
                 self.config.data.task_suite_name,
@@ -1226,7 +1227,13 @@ class RayTrainer(object):
 
     def _training_step_limit_reached(self, global_steps):
         limit = self.config.trainer.get("total_training_steps")
-        return limit is not None and global_steps >= limit
+        if limit is not None and global_steps >= limit:
+            return True
+        budget = float(self.config.trainer.get("max_training_seconds", 0) or 0)
+        if budget < 0:
+            raise ValueError("max_training_seconds cannot be negative")
+        started = getattr(self, "_training_started", None)
+        return budget > 0 and started is not None and time.monotonic() - started >= budget
 
     @staticmethod
     def _safe_int(value, default=0):
@@ -2347,6 +2354,7 @@ class RayTrainer(object):
         )
         for idx, test_data in enumerate(self.val_dataloader):
             test_batch = DataProto.from_single_dict(test_data)
+            test_batch.non_tensor_batch["evaluation_keep"] = np.ones(len(test_batch), dtype=bool)
 
             test_batch.meta_info = {
                 "eos_token_id": self.tokenizer.eos_token_id,
@@ -2366,6 +2374,7 @@ class RayTrainer(object):
             dispatch_batch = test_batch
             if padding:
                 duplicates = test_batch.slice(torch.arange(padding) % original_count)
+                duplicates.non_tensor_batch["evaluation_keep"] = np.zeros(padding, dtype=bool)
                 dispatch_batch = DataProto.concat([test_batch, duplicates])
             test_output_gen_batch = self.actor_rollout_wg.generate_sequences(dispatch_batch)
             if test_output_gen_batch is None or len(test_output_gen_batch) != len(dispatch_batch):
@@ -2754,6 +2763,7 @@ class RayTrainer(object):
                 return
 
         print("################### Start Training Now ###################")
+        self._training_started = time.monotonic()
         # update_wm = self.config.actor_rollout_ref.world_model.get("fine_tune", False)
         # skip_first_rollout = False
         # skip_first_wm_update = False
@@ -2828,6 +2838,7 @@ class RayTrainer(object):
                             "eos_token_id": self.tokenizer.eos_token_id,
                             "n_samples": n_samples,
                             "pad_token_id": self.tokenizer.pad_token_id,
+                            "global_steps": global_steps,
                         }
                         train_max_steps = _get_positive_int_attr(
                             self.config.actor_rollout_ref.rollout, "train_max_steps", 0
@@ -5559,6 +5570,7 @@ class RayTrainer(object):
                 return
 
         print("###### Start Training Now (fit_wm_v4) ######")
+        self._training_started = time.monotonic()
 
         # main loop
         # Resume from the recorded epoch boundary (coarse-grained recovery by design).

@@ -4117,6 +4117,26 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
 
         torch.cuda.empty_cache()
 
+        presentation_dir = getattr(self.config, "presentation_dir", None)
+        if presentation_dir and meta_info.get("validate", False):
+            from merl.episode_artifacts import save_episode
+            keep = prompts.non_tensor_batch.get("evaluation_keep", np.ones(len(prompts), dtype=bool))
+            for index, record in enumerate(task_records):
+                if not bool(keep[index // n_samples]):
+                    continue
+                reason = str(record.get("placeholder_reason", "") or "")
+                save_episode(
+                    os.path.join(presentation_dir, f"step_{global_steps:06d}"),
+                    video_records[index]["env_images"],
+                    dict(task_id=int(task_id[index].item()), trial_id=int(trial_id[index].item()),
+                         task_suite=str(task_suite_name[index]), instruction=task_descriptions[index],
+                         success=bool(record["complete"]), environment_steps=int(record["finish_step"]),
+                         valid=not reason and not bool(record.get("is_dummy", False)), failure_reason=reason,
+                         max_steps=max_steps, global_step=int(global_steps), observation_source="real_environment",
+                         protocol_id=str(getattr(self.config, "presentation_protocol", "")),
+                         label=str(getattr(self.config, "presentation_label", self.config.experiment_name))),
+                )
+
         if is_valid:
             self._save_debug_rollout_videos(
                 video_records,

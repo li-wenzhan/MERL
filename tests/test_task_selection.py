@@ -34,6 +34,16 @@ class TaskSelectionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cls("libero_10", task_ids=ids)
 
+    def test_evaluation_offset_keeps_online_training_states_disjoint(self):
+        cls = load_dataset()
+        train = cls("libero_10", num_trials_per_task=3, task_ids=[0])
+        valid = cls("libero_10", num_trials_per_task=3, task_ids=[0], train_val="valid", trial_offset=10)
+        self.assertEqual([int(row["trial_id"]) for row in train], [0, 1, 2])
+        self.assertEqual([int(row["trial_id"]) for row in valid], [10, 11, 12])
+        for offset in (-1, True, 1.5):
+            with self.assertRaises(ValueError):
+                cls("libero_10", trial_offset=offset)
+
     def test_rollout_guard_never_relabels_tasks(self):
         tree = ast.parse((ROOT / "verl/workers/rollout/rob_rollout_wm_pro.py").read_text(encoding="utf-8"))
         node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "sanitize_task_ids")

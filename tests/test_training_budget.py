@@ -8,6 +8,24 @@ import unittest
 
 
 class TrainingBudgetTests(unittest.TestCase):
+    def test_wall_time_budget_is_checked_at_update_boundaries(self):
+        path = Path(__file__).resolve().parents[1] / "verl/trainer/ppo/ray_trainer.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+                      and n.name == "_training_step_limit_reached")
+        clock = SimpleNamespace(monotonic=lambda: 160.0)
+        scope = {"time": clock}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), "exec"), scope)
+        owner = SimpleNamespace(config=SimpleNamespace(trainer={"max_training_seconds": 60}),
+                                _training_started=100.0)
+        check = scope["_training_step_limit_reached"]
+        self.assertTrue(check(owner, 1))
+        clock.monotonic = lambda: 159.0
+        self.assertFalse(check(owner, 1))
+        owner.config.trainer["max_training_seconds"] = 0
+        clock.monotonic = lambda: 9999.0
+        self.assertFalse(check(owner, 1))
+
     def test_real_training_dispatch_preserves_the_requested_horizon(self):
         path = Path(__file__).resolve().parents[1] / "verl/trainer/ppo/ray_trainer.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -34,9 +52,10 @@ class TrainingBudgetTests(unittest.TestCase):
                     config=SimpleNamespace(actor_rollout_ref=SimpleNamespace(rollout=rollout)),
                     tokenizer=SimpleNamespace(eos_token_id=2, pad_token_id=0))
                 batch = SimpleNamespace(meta_info={})
-                exec(code, {"self": owner, "gen_batch": batch, "n_samples": 4})
+                exec(code, {"self": owner, "gen_batch": batch, "n_samples": 4, "global_steps": 7})
                 self.assertEqual(batch.meta_info.get("max_steps"), horizon)
                 self.assertEqual(batch.meta_info["n_samples"], 4)
+                self.assertEqual(batch.meta_info["global_steps"], 7)
 
     def test_both_loops_stop_at_the_budget_including_resumed_runs(self):
         path = Path(__file__).resolve().parents[1] / "verl/trainer/ppo/ray_trainer.py"

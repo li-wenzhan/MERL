@@ -255,6 +255,7 @@ def main():
                 "source_hashes": {str(path): digest(path) for path in (
                     PROFILE, args.eval_config.expanduser().resolve(), args.wm_config.expanduser().resolve(),
                     ROOT / "merl/launch.py", ROOT / "verl/trainer/main_ppo.py",
+                    ROOT / "merl/episode_artifacts.py", ROOT / "verl/utils/dataset/rob_dataset.py",
                     ROOT / "verl/trainer/ppo/ray_trainer.py", ROOT / "verl/workers/fsdp_workers.py",
                     ROOT / "verl/workers/actor/dp_rob.py", ROOT / "verl/workers/rollout/rob_rollout_wm_pro.py")},
                 "packages": {name: importlib.metadata.version(name) for name in ("torch", "transformers", "ray", "numpy")},
