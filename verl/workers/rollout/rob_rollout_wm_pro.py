@@ -38,6 +38,7 @@ import einops
 import torch
 import torch.distributed
 import torch.distributed as dist
+from merl.libero_states import load_task_init_states
 from merl.rollout_contract import valid_response_tokens as count_valid_response_tokens
 import yaml
 from ray import get
@@ -1059,7 +1060,9 @@ def _libero_env_service_worker(config, input_queue, output_queue):
         benchmark_dict = _get_libero_pro_benchmark_dict(config)
         task_suite = benchmark_dict[task_name]()
         task = task_suite.get_task(task_id)
-        initial_states = task_suite.get_task_init_states(task_id)
+        if not task_description.strip():
+            task_description = str(task.language)
+        initial_states = load_task_init_states(task_suite, task_id)
         initial_state = initial_states[trial_id]
         task_key = (task_name, task_id)
         _emit("task_loaded", task_name=task_name, task_id=task_id, trial_id=trial_id)
@@ -1731,7 +1734,7 @@ def env_worker(
         benchmark_dict = _get_libero_pro_benchmark_dict(config)
         task_suite = benchmark_dict[task_name]()
         task = task_suite.get_task(task_id)
-        initial_states = task_suite.get_task_init_states(task_id)
+        initial_states = load_task_init_states(task_suite, task_id)
         initial_state = initial_states[trial_id]
         task_description = ood_task_description
 
@@ -1892,7 +1895,7 @@ def env_worker_wm(
         benchmark_dict = _get_libero_pro_benchmark_dict(config)
         task_suite = benchmark_dict[task_name]()
         task = task_suite.get_task(task_id)
-        initial_states = task_suite.get_task_init_states(task_id)
+        initial_states = load_task_init_states(task_suite, task_id)
         initial_state = initial_states[trial_id]
         emit_progress("task_loaded")
 
@@ -2131,7 +2134,7 @@ def env_worker_evolving(
     benchmark_dict = _get_libero_pro_benchmark_dict(config)
     task_suite = benchmark_dict[task_name]()
     task = task_suite.get_task(task_id)
-    initial_states = task_suite.get_task_init_states(task_id)
+    initial_states = load_task_init_states(task_suite, task_id)
     initial_state = initial_states[trial_id]
 
     # 1. initialization stage
@@ -2336,7 +2339,7 @@ def env_worker_evolving_envonly(
         benchmark_dict = _get_libero_pro_benchmark_dict(config)
         task_suite = benchmark_dict[task_name]()
         task = task_suite.get_task(task_id)
-        initial_states = task_suite.get_task_init_states(task_id)
+        initial_states = load_task_init_states(task_suite, task_id)
         initial_state = initial_states[trial_id]
         task_description = ood_task_description
 
@@ -2548,7 +2551,7 @@ def env_worker_evolving_envonly_v1(
         benchmark_dict = _get_libero_pro_benchmark_dict(config)
         task_suite = benchmark_dict[task_name]()
         task = task_suite.get_task(task_id)
-        initial_states = task_suite.get_task_init_states(task_id)
+        initial_states = load_task_init_states(task_suite, task_id)
         initial_state = initial_states[trial_id]
         task_description = ood_task_description
         emit_progress("task_loaded")

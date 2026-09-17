@@ -5,6 +5,7 @@
 # 3. Fail before Ray/model startup if MuJoCo/OpenGL is misconfigured.
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -34,7 +35,15 @@ def main() -> None:
     parser.add_argument("--num-steps-wait", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=16)
     parser.add_argument("--timeout-s", type=float, default=180.0)
+    parser.add_argument("--step-count", type=int, default=1,
+                        help="Number of zero-motion actions to exercise after reset")
+    parser.add_argument("--output-dir", help="New directory for rendered smoke-test evidence")
     args = parser.parse_args()
+    if args.step_count < 0 or args.step_count > args.max_steps - args.num_steps_wait:
+        parser.error("step-count must fit within max-steps minus num-steps-wait")
+    output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else None
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=False)
 
     repo_root = _repo_root()
     if repo_root not in sys.path:
@@ -109,13 +118,47 @@ def main() -> None:
         if not bool(init_data.get("active", False)):
             raise RuntimeError("env service reset returned inactive state")
 
+        frames = [image_arr]
+        step_data = None
+        if args.step_count:
+            actions = np.zeros((args.step_count, 7), dtype=np.float32)
+            actions[:, -1] = 1.0
+            client.submit_step(actions)
+            step_data = client.recv_step(timeout=60.0, context="preflight zero-motion step")
+            if step_data.get("type") != "step":
+                raise RuntimeError(f"env step failed: {step_data}")
+            returned_frames = step_data.get("env_images", [])
+            if not returned_frames or len(returned_frames) > args.step_count:
+                raise RuntimeError("env step returned an invalid frame count")
+            if len(returned_frames) != args.step_count and not step_data.get("complete", False):
+                raise RuntimeError("env step stopped early without success")
+            for frame in returned_frames:
+                if np.asarray(frame).shape != image_arr.shape:
+                    raise RuntimeError("env step changed rendered image shape")
+            frames.extend(returned_frames)
+
+        if output_dir:
+            from PIL import Image
+            for index, frame in enumerate(frames):
+                Image.fromarray(np.asarray(frame)).save(output_dir / f"frame_{index:03d}.png")
+            payload = {
+                "purpose": "environment_smoke_only_not_policy_evaluation",
+                "config": cfg_path, "task_suite": args.task_suite,
+                "task_id": args.task_id, "trial_id": args.trial_id,
+                "backend": _get_libero_primary_backend(worker_config),
+                "action_count": len(frames) - 1,
+                "task_description": init_data.get("task_description", ""),
+                "success": bool(step_data and step_data.get("complete", False)),
+            }
+            (output_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n")
+
         print(
             "[preflight] LIBERO-PRO env service OK "
             f"(backend={_get_libero_primary_backend(worker_config)}, "
             f"cuda_visible={getattr(worker_config, 'env_render_cuda_visible_devices', '')}, "
             f"egl_device={getattr(worker_config, 'mujoco_egl_device_id', '')}, "
             f"task={args.task_suite}:{args.task_id}, trial={args.trial_id}, "
-            f"image_shape={tuple(image_arr.shape)})"
+            f"image_shape={tuple(image_arr.shape)}, actions={len(frames) - 1})"
         )
     except Exception as exc:
         raise SystemExit(f"[preflight] LIBERO-PRO env service failed: {exc}") from exc

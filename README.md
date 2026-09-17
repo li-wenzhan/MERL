@@ -9,7 +9,7 @@ The isolated [no-oracle trust core](docs/no_oracle_trust.md) implements calibrat
 frozen residual inference, recursive input boundaries and the Appendix A trust
 equations. Its integration into the distributed training loop remains pending.
 
-Run its CPU tests with `python -m unittest discover -s tests -v` (PyTorch required).
+Run its CPU tests with `python -m unittest discover -s tests -v` (PyTorch and NumPy required).
 For portable four-GPU command preparation, asset gates and qualitative comparison,
 use the [H100 runbook](docs/h100_runbook.md) and `python -m merl.launch --help`.
 The older guide below describes existing entrypoints and debug defaults, not a

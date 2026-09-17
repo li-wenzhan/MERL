@@ -108,6 +108,11 @@ def main() -> None:
         "'mujoco>=2.3.7,<3.0' bddl easydict cloudpickle 'gym>=0.23,<0.26'"
     )
     _require_numpy_1x(install_hint)
+    # Match rollout startup: initialize verl/torch/Triton before robosuite/Numba.
+    # With the deployed native libraries, reversing these imports segfaults while
+    # loading Triton's extension, before Python can report an import exception.
+    from verl.utils.libero_path import ensure_libero_pro_root
+
     _require_import(
         "robosuite.environments.manipulation.single_arm_env",
         install_hint,
@@ -116,8 +121,6 @@ def main() -> None:
     # Activate a non-interactive LIBERO runtime config before importing
     # libre modules, otherwise first-time imports may prompt for dataset path.
     try:
-        from verl.utils.libero_path import ensure_libero_pro_root
-
         ensure_libero_pro_root(
             evaluation_config_path=cfg_path,
             explicit_root=libero_pro_root,

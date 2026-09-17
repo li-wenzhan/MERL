@@ -19,6 +19,7 @@ import tensorflow as tf
 
 import random
 
+from merl.libero_states import load_task_init_states
 # from experiments.robot.robot_utils import (
 #     DATE,
 #     DATE_TIME,
@@ -370,7 +371,7 @@ TASK_MAX_STEPS = {
 def load_initial_states(cfg, task_suite, task_id: int, log_file=None):
     """Load initial states for the given task."""
     # Get default initial states
-    initial_states = task_suite.get_task_init_states(task_id)
+    initial_states = load_task_init_states(task_suite, task_id)
 
     # If using custom initial states, load them from file
     if cfg.initial_states_path != "DEFAULT":
@@ -386,7 +387,7 @@ def load_initial_states(cfg, task_suite, task_id: int, log_file=None):
 def load_initial_states_by_path(initial_states_path: str, task_suite, task_id: int):
     """Load initial states for the given task."""
     # Get default initial states
-    initial_states = task_suite.get_task_init_states(task_id)
+    initial_states = load_task_init_states(task_suite, task_id)
 
     # If using custom initial states, load them from file
     if initial_states_path != "DEFAULT":

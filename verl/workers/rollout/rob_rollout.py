@@ -27,6 +27,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.nn.utils.rnn import pad_sequence
 import importlib
 
+from merl.libero_states import load_task_init_states
 import verl.utils.torch_functional as verl_F
 from transformers import GenerationConfig
 from verl import DataProto
@@ -404,7 +405,7 @@ def env_worker(
     benchmark_dict = benchmark.get_benchmark_dict()
     task_suite = benchmark_dict[task_name]()
     task = task_suite.get_task(task_id)
-    initial_states = task_suite.get_task_init_states(task_id)
+    initial_states = load_task_init_states(task_suite, task_id)
     initial_state = initial_states[trial_id]
 
     env = None
@@ -438,7 +439,7 @@ def env_worker(
             benchmark_dict = benchmark.get_benchmark_dict()
             task_suite = benchmark_dict[task_name]()
             task = task_suite.get_task(task_id)
-            initial_states = task_suite.get_task_init_states(task_id)
+            initial_states = load_task_init_states(task_suite, task_id)
             initial_state = initial_states[trial_id]
 
             env = None
