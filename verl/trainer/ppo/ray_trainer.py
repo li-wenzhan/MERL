@@ -2354,7 +2354,7 @@ class RayTrainer(object):
         )
         for idx, test_data in enumerate(self.val_dataloader):
             test_batch = DataProto.from_single_dict(test_data)
-            test_batch.non_tensor_batch["evaluation_keep"] = np.ones(len(test_batch), dtype=bool)
+            test_batch.non_tensor_batch["evaluation_keep"] = np.full(len(test_batch), True, dtype=object)
 
             test_batch.meta_info = {
                 "eos_token_id": self.tokenizer.eos_token_id,
@@ -2374,7 +2374,7 @@ class RayTrainer(object):
             dispatch_batch = test_batch
             if padding:
                 duplicates = test_batch.slice(torch.arange(padding) % original_count)
-                duplicates.non_tensor_batch["evaluation_keep"] = np.zeros(padding, dtype=bool)
+                duplicates.non_tensor_batch["evaluation_keep"] = np.full(padding, False, dtype=object)
                 dispatch_batch = DataProto.concat([test_batch, duplicates])
             test_output_gen_batch = self.actor_rollout_wg.generate_sequences(dispatch_batch)
             if test_output_gen_batch is None or len(test_output_gen_batch) != len(dispatch_batch):
