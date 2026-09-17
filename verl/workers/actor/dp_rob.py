@@ -664,49 +664,14 @@ class RobDataParallelPPOActor(BasePPOActor):
             self.actor_optimizer.zero_grad()
             return grad_norm
 
+        if not torch.isfinite(grad_norm).all():
+            raise FloatingPointError("Non-finite actor gradient norm; optimizer update aborted")
         self._force_actor_optimizer_single_tensor_step()
-        try:
-            self.actor_optimizer.step()
-        except RuntimeError as err:
-            if not self._is_optimizer_tensor_contract_error(err):
-                raise
-            print(
-                "[dp_rob] WARNING: AdamW step hit tensor device/dtype mismatch; "
-                "repairing actor optimizer state and retrying once.",
-                flush=True,
-            )
-            self._force_actor_optimizer_single_tensor_step()
-            self._repair_actor_optimizer_tensor_contract(context="retry_step")
-            try:
-                self.actor_optimizer.step()
-            except RuntimeError as retry_err:
-                if not self._is_optimizer_tensor_contract_error(retry_err):
-                    raise
-                print(
-                    "[dp_rob] WARNING: AdamW retry still hit optimizer tensor "
-                    "contract mismatch; skip this actor optimizer step to keep "
-                    "distributed training alive. Next batch will retry after the "
-                    "offload/load cycle.",
-                    flush=True,
-                )
+        self._repair_actor_optimizer_tensor_contract(context="before_step")
+        # AdamW can update some parameters before failing. Retrying the whole step
+        # would update those parameters twice; propagate failures instead.
+        self.actor_optimizer.step()
         return grad_norm
-
-    @staticmethod
-    def _is_optimizer_tensor_contract_error(err: RuntimeError) -> bool:
-        message = str(err).lower()
-        patterns = (
-            "same index must be on the same device and the same dtype",
-            "_group_tensors_by_device_and_dtype",
-            "foreach",
-            "expected all tensors to be on the same device",
-            "expected scalar type",
-            "found dtype",
-            "device type",
-            "size mismatch",
-            "the size of tensor",
-            "must match the size of tensor",
-        )
-        return any(pattern in message for pattern in patterns)
 
     def _force_actor_optimizer_single_tensor_step(self) -> None:
         if self.actor_optimizer is None:
