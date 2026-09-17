@@ -19,6 +19,7 @@ def training_overrides(steps, seconds):
             f"trainer.max_training_seconds={seconds}", "trainer.save_freq=1",
             "trainer.test_freq=1000000", "trainer.final_val_after_train=true",
             "data.n_samples=2", "data.filter_accuracy=false",
+            "actor_rollout_ref.model.checkpoint_format=hf_full_state_dict",
             "actor_rollout_ref.actor.optim.lr=0.000005",
             "actor_rollout_ref.actor.ppo_mini_batch_size=6",
             "actor_rollout_ref.actor.traj_mini_batch_size=6",

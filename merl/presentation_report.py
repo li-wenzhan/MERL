@@ -50,6 +50,7 @@ def training_evidence(info):
                 gradient_norm_max=max(finite_values("actor/grad_norm"), default=0),
                 imagined_actor_tokens_logged=sum(finite_values("wm/actor_input_imag_token_count")),
                 imagined_actor_weight_max=max(finite_values("wm/actor_input_imag_weight_mean"), default=0),
+                world_model_update_steps=sum(finite_values("wm/update/steps_done")),
                 checkpoints=[str(p) for p in sorted((Path(info["experiment_dir"]) / "actor").glob("global_step_*"))
                              if (p / "config.json").is_file()])
 
@@ -139,6 +140,10 @@ def build_report(root):
             warnings.append("No imagined actor tokens were logged; full MERL mechanism is not demonstrated")
         if mode in ("MERL", "MBRL") and info["job"] == "train" and evidence["imagined_actor_weight_max"] == 0:
             warnings.append("No positive imagined actor weight was logged; WM contribution is not demonstrated")
+        if mode == "MERL" and info["job"] == "train" and evidence["world_model_update_steps"] == 0:
+            warnings.append("No completed world-model updates were logged; simulator evolution is not demonstrated")
+        if mode == "MBRL" and evidence["world_model_update_steps"] > 0:
+            warnings.append("World-model updates were logged in MBRL; inspect the frozen-simulator contract")
         if any(not r["video"] or r["frame_count"] <= 0 for r in panel.values()):
             warnings.append("Some evaluation episodes have no saved video")
         summary = dict(mode=info["label"], status=info["status"], evaluation_complete=complete,

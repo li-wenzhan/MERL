@@ -45,6 +45,11 @@ clip ranges, temperature and minibatch sizes across modes; legacy mode-specific
 WM/anchor/KL guards remain in effect and are recorded in resolved configurations.
 WM diffusion is shortened to eight steps and MERL warmup to one outer update.
 These are pilot settings, not tuned or reproduced paper settings.
+The pilot explicitly exports full Hugging Face actor checkpoints so they can be
+evaluated independently later. Each FP32 actor export is approximately 30 GB;
+the existing retention policy keeps two per mode. Allow roughly 200 GB for actor
+exports across the three modes, plus rollout/replay/WM artifacts. Shared-storage
+write speed affects the timing estimate.
 
 ## Saved evidence
 
@@ -81,7 +86,8 @@ python -m merl.presentation_report tmp_files/ppt_runs/RUN_ID
 
 Look for nonzero finite gradients and actual checkpoints before claiming that a
 policy learned. For MERL/MBRL also inspect positive imagined actor weights and
-tokens. Sparse success rewards can yield zero advantages for all samples;
+tokens; for MERL, require completed WM update steps before claiming simulator
+evolution. Sparse success rewards can yield zero advantages for all samples;
 additional runtime cannot be assumed to produce a convincing ranking. Retain
 unsuccessful episodes and report actual completed updates rather than describing
 all three modes as having matched compute or interaction budgets.

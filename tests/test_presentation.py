@@ -38,6 +38,7 @@ class PresentationTests(unittest.TestCase):
                 self.assertIn("actor_rollout_ref.rollout.eval_max_steps=512", info["command"])
                 self.assertIn("data.eval_trial_offset=10", info["command"])
                 self.assertIn("trainer.max_training_seconds=900", info["command"])
+                self.assertIn("actor_rollout_ref.model.checkpoint_format=hf_full_state_dict", info["command"])
 
     def test_saved_video_keyframes_and_incomplete_panel(self):
         import imageio.v2 as imageio
@@ -88,12 +89,14 @@ class PresentationTests(unittest.TestCase):
             row = {"train/global_step": 0, "actor/grad_norm": 0.4,
                    "actor/optimizer_step_count": 2,
                    "wm/actor_input_imag_token_count": 56,
-                   "wm/actor_input_imag_weight_mean": 0.1}
+                   "wm/actor_input_imag_weight_mean": 0.1,
+                   "wm/update/steps_done": 2}
             (root / "run_0.log").write_text("header\n2026\t0\t" + json.dumps(row) + "\n")
             result = training_evidence({"experiment_dir": tmp})
             self.assertEqual(result["completed_outer_steps"], 1)
             self.assertEqual(result["imagined_actor_tokens_logged"], 56)
             self.assertEqual(result["imagined_actor_weight_max"], 0.1)
+            self.assertEqual(result["world_model_update_steps"], 2)
 
     def test_reject_invalid_rgb_frames(self):
         with tempfile.TemporaryDirectory() as tmp:
