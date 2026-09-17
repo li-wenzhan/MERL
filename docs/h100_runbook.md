@@ -163,3 +163,26 @@ from metrics and counted as `validation/padding_rollouts`. Invalid rollouts fail
 the maintained evaluation job instead of silently reducing its denominator.
 Collection requires a trial count divisible by actor ranks; use one actor for
 small fixed datasets. These changes can change results relative to older scripts.
+
+## Simulator forward smoke
+
+```bash
+python scripts/preflight_world_model_backbone.py \
+  --config configs/wm_online_config.py --checkpoint /models/ctrl-world.pt \
+  --image outputs/env_smoke_001/frame_000.png \
+  --instruction 'put both the alphabet soup and the tomato sauce in the basket' \
+  --output outputs/wm_forward_smoke_001.json
+```
+
+The command strictly loads the supplied checkpoint, repeats the input as history,
+uses zero actions and runs two diffusion steps followed by reward prediction.
+The image/instruction must match. This is a structural smoke test, not an aligned
+stored trajectory or simulator-quality measurement. On the CCI checkpoint it
+produced finite `[8,192,320,3]` frames and eight reward probabilities, with
+5,295,523,840 peak allocated GPU bytes. `--load-model` alone keeps loading on CPU.
+
+LIBERO-PRO's generated initial states use a NumPy-pickle ZIP format different from
+original Torch archives. MERL supports both with scoped reconstruction allowlists;
+no global unrestricted pickle loading is enabled. The official generator exposes
+no seed argument: freeze and hash generated BDDL/init files for cross-mode reuse
+instead of claiming byte-for-byte regeneration from a seed.
