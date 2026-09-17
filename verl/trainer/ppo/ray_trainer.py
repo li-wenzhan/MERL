@@ -1211,6 +1211,11 @@ class RayTrainer(object):
         total_training_steps = (
             len(self.train_dataloader) * self.config.trainer.total_epochs
         )
+        step_limit = self.config.trainer.get("total_training_steps")
+        if step_limit is not None:
+            if isinstance(step_limit, bool) or not isinstance(step_limit, int) or step_limit < 1:
+                raise ValueError("trainer.total_training_steps must be a positive integer or null")
+            total_training_steps = min(total_training_steps, step_limit)
 
         OmegaConf.set_struct(self.config, True)
         with open_dict(self.config):
@@ -1218,6 +1223,10 @@ class RayTrainer(object):
                 total_training_steps
             )
             self.config.critic.optim.total_training_steps = total_training_steps
+
+    def _training_step_limit_reached(self, global_steps):
+        limit = self.config.trainer.get("total_training_steps")
+        return limit is not None and global_steps >= limit
 
     @staticmethod
     def _safe_int(value, default=0):
@@ -2749,10 +2758,12 @@ class RayTrainer(object):
         # skip_first_rollout = False
         # skip_first_wm_update = False
         for epoch in range(start_epoch, self.config.trainer.total_epochs):
+            if self._training_step_limit_reached(global_steps):
+                break
             print(f"[Epoch] Start epoch: {epoch} / {self.config.trainer.total_epochs}")
 
             self.train_dataloader.start_new_epoch()
-            while True:
+            while not self._training_step_limit_reached(global_steps):
                 valid_batch = []
                 buffer_batch = []
                 if self.train_dataloader.buffer_size() > 0:
@@ -3153,7 +3164,7 @@ class RayTrainer(object):
                 global_steps += 1
 
         # perform validation after training
-        if self.val_reward_fn is not None:
+        if self.val_reward_fn is not None and self.config.trainer.get("final_val_after_train", True):
             val_metrics = self._validate(global_steps=global_steps)
             val_metrics = {f"val/{key}": val for key, val in val_metrics.items()}
             pprint(f"Final validation metrics: {val_metrics}")
@@ -5547,6 +5558,8 @@ class RayTrainer(object):
         # main loop
         # Resume from the recorded epoch boundary (coarse-grained recovery by design).
         for epoch in range(start_epoch, self.config.trainer.total_epochs):
+            if self._training_step_limit_reached(global_steps):
+                break
             try:
                 self.train_dataloader.start_new_epoch()
             except Exception:
@@ -5558,7 +5571,7 @@ class RayTrainer(object):
                     f"-------------------- [Epoch] Start epoch: {epoch} / {self.config.trainer.total_epochs} --------------------"
                 )
 
-            while True:
+            while not self._training_step_limit_reached(global_steps):
                 valid_batch = None
                 calibration_real_batch = None
                 buffer_batch = []
