@@ -186,3 +186,23 @@ original Torch archives. MERL supports both with scoped reconstruction allowlist
 no global unrestricted pickle loading is enabled. The official generator exposes
 no seed argument: freeze and hash generated BDDL/init files for cross-mode reuse
 instead of claiming byte-for-byte regeneration from a seed.
+
+## Freeze the evaluation assets
+
+After the selected perturbation assets are fully generated, validate and fingerprint
+them once. Do not rerun generation independently for each mode.
+
+```bash
+python scripts/manifest_libero_assets.py \
+  --bddl-dir /benchmark/LIBERO-PRO/libero/libero/bddl_files/libero_10_env \
+  --init-dir /benchmark/LIBERO-PRO/libero/libero/init_files/libero_10_env \
+  --expected-tasks 10 --min-trials 50 \
+  --config configs/evaluation_config.yaml --source-root /benchmark/LIBERO-PRO \
+  --output outputs/libero10_env_panel_001.json
+```
+
+The manifest records per-file hashes, task/state counts, unique state counts,
+configuration hash and LIBERO-PRO Git revision. It rejects missing or extra tasks,
+invalid state arrays and insufficient trials. Keep the manifest with all comparison
+runs and verify hashes before reuse. A fingerprint records identity; it does not
+make the external files immutable or prove the perturbation is a meaningful OOD shift.
