@@ -118,8 +118,8 @@ trust validity or the paper's performance claims from these qualitative videos.
 - Single-image SFT inference passes on the real task-0 observation: finite `[8,7]`
   actions, no missing/unexpected parameters, 15,450,736,128 peak allocated GPU
   bytes. This used torch 2.12.0+cu130 / transformers 4.57.6; the vendored model
-  warns that its original reference versions differ. Closed-loop behavior and
-  FSDP remain separate validation gates.
+  warns that its original reference versions differ. Single-rank closed-loop
+  validation is recorded below; multi-rank FSDP remains an ACP validation gate.
 - LIBERO-PRO compatibility passes with NumPy 1.26.4 and robosuite 1.4.1.
   A real `libero_10:0`, trial 0 environment resets, renders 256x256 RGB through
   EGL and executes two zero-motion actions. This checks the original task, not
@@ -206,3 +206,72 @@ configuration hash and LIBERO-PRO Git revision. It rejects missing or extra task
 invalid state arrays and insufficient trials. Keep the manifest with all comparison
 runs and verify hashes before reuse. A fingerprint records identity; it does not
 make the external files immutable or prove the perturbation is a meaningful OOD shift.
+
+## Dataset requirements
+
+Online RL from the supplied SFT and Ctrl-World checkpoints does not require the
+full LIBERO demonstration HDF5 dataset. It needs the simulator assets, BDDL tasks
+and matching initial states. Demonstrations are needed when repeating SFT or
+offline world-model pretraining. Fixed WM evaluation shards are another dataset:
+collect them once through `--job collect`, freeze them and exclude them from
+training. Default startup profiles leave fixed WM evaluation disabled.
+The upstream warning about a missing `libero/datasets` directory refers to
+demonstrations; the validated online environment path works without that directory.
+
+The current `libero_10_env` panel contains ten task/state pairs with fifty valid
+initial states each. `scripts/manifest_libero_assets.py` checked all 500 states
+and recorded file hashes in
+`outputs/preflight_20260917/pipeline/libero10_env_panel.json` on CCI.
+
+## Closed-loop evidence and remaining gates
+
+The ACP payload was also exercised on CCI with one actor:
+
+```bash
+ACTOR_GPUS=1 OUTPUT_ROOT=outputs/preflight_20260917/pipeline \
+  bash tmp_files/acp_merl.sh MFRL evaluate cci_closed_loop_001 --smoke --trials 1
+```
+
+That run used clean revision `59efd6c`, exited with code zero and recorded one
+valid real-environment trial, no invalid rollouts and an MP4. Its zero success
+rate over sixteen steps is a plumbing result, not a benchmark estimate. Inspect
+the run's `launch_manifest.json` and `run.log` for the resolved configuration and
+provenance. Policy evaluation now uses the same real-environment path for all
+three mode names, even when the training mode would enable the simulator.
+
+The same command with `MBRL evaluate cci_mbrl_closed_loop_001` also passed at
+clean revision `69cd2d5`: one valid trial, zero invalid rollouts, exit code zero
+and `world_model.enable=false`. Both checks use the same SFT weights; they verify
+mode dispatch and evaluation plumbing, not separately trained algorithms.
+
+Both training loops now honor `trainer.total_training_steps`; `--smoke` caps the
+run at one completed outer step. This limit counts completed loop iterations,
+not gradient steps or environment interactions. For a checkpoint-saving smoke,
+append `-- trainer.save_freq=1`. Record optimizer-step metrics as well as the
+process exit status, since a guarded or zero-signal update can leave weights
+unchanged. The regression suite currently contains 40 passing tests on both the
+local CPU environment and CCI.
+
+Actor updates now reject non-finite gradient norms and propagate optimizer errors.
+AdamW state compatibility is handled before stepping; a potentially partial update
+is never retried or silently reported as successful.
+
+A CCI full-parameter training attempt (`cci_actor_update_001`, revision `a661e7d`)
+exposed a missing MFRL horizon override: workers used 512 steps despite the smoke
+configuration requesting 16. The driver was terminated intentionally; this run
+is not a successful training check. Revision `4352241` forwards the configured
+horizon, with a regression test at the actual metadata-dispatch boundary. The
+corrected training path still needs an ACP runtime check.
+
+Do not use single-rank CCI to validate the default full-parameter Adam update:
+7.54B FP32 parameters, gradients and two optimizer moments require approximately
+120 GB before reference weights and activations. Existing optimizer offload moves
+state back to the GPU for updates; it is not CPU optimizer execution. Use the
+three-actor ACP layout to validate the original precision and optimizer settings.
+
+Before a full ACP run, verify multi-rank actor updates, the dedicated WM update
+and synchronization, and checkpoint saving on the allocated four GPUs. The
+one-step MERL smoke starts in the legacy warmup phase; it does not exercise every
+imagined replay path. Recursive no-oracle trust is still an isolated tested core,
+not an integrated production training mechanism. None of these smoke results
+establishes the paper's comparative performance claims.
