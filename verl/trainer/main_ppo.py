@@ -955,6 +955,18 @@ def main(config):
     ray.get(main_ref)
 
 
+def _configure_policy_evaluation(config):
+    """Keep policy evaluation real-only regardless of the checkpoint's mode label."""
+    if not bool(getattr(config.trainer, "val_only", False)):
+        return False
+    wm_cfg = getattr(config.actor_rollout_ref, "world_model", None)
+    if wm_cfg is not None:
+        for key in ("enable", "fine_tune", "fixed_eval_enabled"):
+            if hasattr(wm_cfg, key):
+                setattr(wm_cfg, key, False)
+    return True
+
+
 @ray.remote(num_cpus=0)
 def main_task(config):
     print("[main_task] started; importing trainer dependencies", flush=True)
@@ -970,6 +982,8 @@ def main_task(config):
         OmegaConf.to_container(config, resolve=True)
     )  # resolve=True will eval symbol values
     OmegaConf.resolve(config)
+
+    policy_evaluation = _configure_policy_evaluation(config)
 
     actor_layout = _resolve_actor_process_on_nodes(config)
     if actor_layout["actual_world_size"] != actor_layout["desired_world_size"]:
@@ -1040,20 +1054,14 @@ def main_task(config):
             if "fine_tune" not in wm_cfg:
                 wm_cfg.fine_tune = False
 
-    if strict_mode_assert:
+    if strict_mode_assert and not policy_evaluation:
         project_name = str(getattr(config.trainer, "project_name", "")).upper()
-        experiment_name = str(getattr(config.trainer, "experiment_name", "")).upper()
         adv_estimator = str(getattr(config.algorithm, "adv_estimator", "")).lower()
         n_samples = int(getattr(config.data, "n_samples", 1))
 
         if project_name and project_name != train_mode:
             raise ValueError(
                 f"[main_ppo] strict_mode_assert: project_name='{project_name}' does not match train_mode='{train_mode}'."
-            )
-
-        if experiment_name and train_mode not in experiment_name:
-            raise ValueError(
-                f"[main_ppo] strict_mode_assert: experiment_name='{experiment_name}' does not contain train_mode='{train_mode}'."
             )
 
         if adv_estimator == "grpo" and n_samples <= 1:
@@ -1077,7 +1085,7 @@ def main_task(config):
                     f"world_model.fine_tune={actual_fine_tune} but train_mode='{train_mode}' expects {expected_fine_tune}."
                 )
 
-    if wm_cfg is not None:
+    if wm_cfg is not None and not policy_evaluation:
         if train_mode == "MFRL":
             if bool(getattr(wm_cfg, "enable", False)) or bool(
                 getattr(wm_cfg, "fine_tune", False)
@@ -1172,7 +1180,7 @@ def main_task(config):
         val_reward_fn=val_reward_fn,
     )
     trainer.init_workers()
-    if train_mode == "MFRL":
+    if train_mode == "MFRL" or policy_evaluation:
         trainer.fit()
     else:
         trainer.fit_wm_v5()

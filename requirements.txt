@@ -1,7 +1,8 @@
 # Install order:
 # 1) Install a CUDA-matched torch / torchvision / torchaudio build manually.
 #    OpenVLA / OpenVLA-OFT imports torchvision directly, so do not skip it.
-# 2) Install flash-attn manually after torch: `pip install flash-attn --no-build-isolation`.
+# 2) FlashAttention is optional for the OpenVLA-OFT eager path. Other attention
+#    backends may require `pip install flash-attn --no-build-isolation` after torch.
 # 3) Clone LIBERO_PRO separately and set `libero_pro_root` in configs/evaluation_config.yaml; `PYTHONPATH` is only an optional fallback now.
 # 4) Then install the remaining packages from this file.
 
