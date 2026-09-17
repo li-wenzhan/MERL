@@ -1,6 +1,7 @@
 import pickle
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,19 @@ class UnsupportedState:
 
 
 class LiberoStatesTests(unittest.TestCase):
+    def test_generated_protocol_four_zip_and_rejected_globals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "generated.pruned_init"
+            for states in (np.arange(30, dtype=np.float64).reshape(3, 10), UnsupportedState()):
+                with zipfile.ZipFile(path, "w") as archive:
+                    archive.writestr("archive/data.pkl", pickle.dumps(states, protocol=4))
+                    archive.writestr("archive/version", b"1")
+                if isinstance(states, np.ndarray):
+                    np.testing.assert_array_equal(load_init_states(path), states)
+                else:
+                    with self.assertRaises(pickle.UnpicklingError):
+                        load_init_states(path)
+
     def test_official_numpy_layout_and_scoped_allowlist(self):
         before = torch.serialization.get_safe_globals().copy()
         with tempfile.TemporaryDirectory() as directory:
