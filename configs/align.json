@@ -6,7 +6,6 @@
     "PYTORCH_CUDA_ALLOC_CONF": "max_split_size_mb:128",
     "TORCH_DISTRIBUTED_DEBUG": "OFF",
     "TOKENIZERS_PARALLELISM": "true",
-    "WANDB_API_KEY": "86afa5b168a8fbf4a1dfd98145f0c5d133ca103b",
     "DISPLAY": ":99",
     "MUJOCO_GL": "glx",
     "PYOPENGL_PLATFORM": "glx",

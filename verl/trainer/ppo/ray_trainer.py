@@ -329,6 +329,22 @@ def union_prompt_and_rollout_output(
     if hasattr(prompt_batch, "non_tensor_batch") and hasattr(
         rollout_output, "non_tensor_batch"
     ):
+        # The environment may perturb the instruction. Keep the actual
+        # sample-aligned rollout instruction, rather than the prompt's stale
+        # placeholder, while retaining prompt-side task/trial identity below.
+        if "task_descriptions" in rollout_output.non_tensor_batch:
+            from verl.utils.task_description_contract import normalize_task_descriptions
+
+            descriptions = normalize_task_descriptions(
+                rollout_output.non_tensor_batch["task_descriptions"],
+                len(rollout_output),
+                context=context,
+            )
+            rollout_output.non_tensor_batch["task_descriptions"] = np.asarray(
+                descriptions, dtype=object
+            )
+            prompt_batch.non_tensor_batch.pop("task_descriptions", None)
+            prompt_batch.meta_info.pop("task_descriptions", None)
         for key in ROLLOUT_PROMPT_NON_TENSOR_KEYS:
             if (
                 key in prompt_batch.non_tensor_batch

@@ -1,5 +1,10 @@
 # MeRL Three-Mode Minimal Guide
 
+For the portable four-GPU wrapper and current runtime gates, see
+[the H100 runbook](../docs/h100_runbook.md). The legacy mode labels below do not
+establish matched budgets or recursive imagination; see
+[the implementation audit](../docs/implementation_audit.md).
+
 This page is the minimal runbook for the current three-mode setup.
 
 ## 1. Shared WM Eval Dataset First

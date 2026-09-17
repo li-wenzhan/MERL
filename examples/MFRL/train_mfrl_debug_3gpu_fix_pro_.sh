@@ -202,7 +202,7 @@ fi
 # export NCCL_DEBUG=WARN
 export WANDB_MODE=disabled
 export WANDB_DISABLED=true
-# export WANDB_API_KEY="86afa5b168a8fbf4a1dfd98145f0c5d133ca103b"  #! wandb api key
+export WANDB_API_KEY="${WANDB_API_KEY:-}"
 # export WANDB_MODE=offline
 
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:128}"

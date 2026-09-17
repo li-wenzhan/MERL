@@ -1,5 +1,20 @@
 # MERL: World Model-Evolving Reinforcement Learning with Trust-Calibrated Imagination
 
+## Implementation status and maintained mechanisms
+
+The production training path currently uses a grounded mirror for WM rollouts;
+it is not yet the recursive no-oracle path described in the rebuttal. See the
+[research-to-code audit](docs/implementation_audit.md) before interpreting results.
+The isolated [no-oracle trust core](docs/no_oracle_trust.md) implements calibration,
+frozen residual inference, recursive input boundaries and the Appendix A trust
+equations. Its integration into the distributed training loop remains pending.
+
+Run its CPU tests with `python -m unittest discover -s tests -v` (PyTorch required).
+For portable four-GPU command preparation, asset gates and qualitative comparison,
+use the [H100 runbook](docs/h100_runbook.md) and `python -m merl.launch --help`.
+The older guide below describes existing entrypoints and debug defaults, not a
+verified reproduction of the paper's experimental protocol.
+
 This repository contains one integrated workflow with four user-facing entrypoints:
 
 - MERL online training: mixed real + imagined policy updates with online world-model calibration

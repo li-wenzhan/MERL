@@ -5,3 +5,6 @@
 __pycache__
 /.vscode
 /modules/ctrl_world/dataset_example
+/.venv/
+/.pytest_cache/
+/tmp/

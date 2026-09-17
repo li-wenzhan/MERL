@@ -38,6 +38,7 @@ import einops
 import torch
 import torch.distributed
 import torch.distributed as dist
+from merl.rollout_contract import valid_response_tokens as count_valid_response_tokens
 import yaml
 from ray import get
 from sympy import get_contraction_structure
@@ -4944,7 +4945,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
                             )
                         if len(wm_outs) < len(active_batches):
                             wm_outs = list(wm_outs) + [{}] * (
-                                len(active_batches) - len(active_batches)
+                                len(active_batches) - len(wm_outs)
                             )
                         # collect env outputs
                         new_inputs = inputs.copy()
@@ -5712,16 +5713,8 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
         for prompt_key in ("task_id", "trial_id", "trial_seed"):
             _copy_prompt_tensor_key(prompt_key)
 
-        response_flat_length = int(batch["responses"][0].numel())
-        response_steps = int(batch["responses"].shape[1])
-        action_token_len = max(1, int(getattr(self.config, "action_token_len", 1)))
-        finish_steps = batch["finish_step"].view(batch_size, -1)[:, 0].clamp_min(0)
-        valid_steps = torch.minimum(
-            finish_steps,
-            torch.full_like(finish_steps, response_steps),
-        )
-        valid_response_tokens = (valid_steps * action_token_len).clamp(
-            max=response_flat_length
+        valid_response_tokens = count_valid_response_tokens(
+            batch["responses"], batch["finish_step"], self.config.action_chunks_len
         )
         batch["valid_response_tokens"] = valid_response_tokens.to(torch.long)
         batch["wm_valid_response_tokens"] = valid_response_tokens.to(torch.long)
@@ -5860,28 +5853,17 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
         for prompt_key in ("task_id", "trial_id", "trial_seed"):
             _copy_prompt_tensor_key(prompt_key)
 
-        response_flat_length = int(batch["responses"][0].numel())
-        response_steps = int(batch["responses"].shape[1])
-        action_token_len = max(1, int(getattr(self.config, "action_token_len", 1)))
-        finish_steps = batch["finish_step"].view(batch_size, -1)[:, 0].clamp_min(0)
         is_dummy = batch.get("is_dummy", None)
         if is_dummy is not None:
             dummy_by_step = is_dummy.to(dtype=torch.bool).view(batch_size, -1)
             dummy_step_count = dummy_by_step.to(torch.long).sum(dim=1)
-            real_step_count = (~dummy_by_step).to(torch.long).sum(dim=1)
         else:
             dummy_step_count = torch.zeros(
                 batch_size, dtype=torch.long, device=batch["responses"].device
             )
-            real_step_count = torch.full(
-                (batch_size,),
-                response_steps,
-                dtype=torch.long,
-                device=batch["responses"].device,
-            )
-        valid_steps = torch.minimum(finish_steps, real_step_count)
-        valid_response_tokens = (valid_steps * action_token_len).clamp(
-            max=response_flat_length
+        valid_response_tokens = count_valid_response_tokens(
+            batch["responses"], batch["finish_step"], self.config.action_chunks_len,
+            dummy_chunks=is_dummy,
         )
         batch["wm_dummy_step_count"] = dummy_step_count
         batch["wm_placeholder_step_count"] = dummy_step_count.clone()
@@ -5935,7 +5917,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
 
         response_shape = tuple(batch["responses"].shape)
         response_flat_length = int(batch["responses"][0].numel())
-        action_token_len = max(1, int(getattr(self.config, "action_token_len", 1)))
+        action_token_len = batch["responses"].shape[-1] // self.config.action_chunks_len
         rm_scores = torch.zeros_like(batch["responses"], dtype=torch.float32)
         rm_scores_flat = rm_scores.view(batch_size, -1)
         wm_proxy_scores = torch.zeros(
@@ -5949,7 +5931,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
             ).reshape(-1)
             if pred_scores.size == 0:
                 continue
-            valid_steps = max(0, int(task_record.get("finish_step", 0)))
+            valid_steps = int(batch["valid_response_tokens"][idx].item()) // action_token_len
             valid_steps = min(valid_steps, int(pred_scores.size))
             if valid_steps <= 0:
                 continue

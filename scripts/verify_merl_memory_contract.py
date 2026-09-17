@@ -104,10 +104,11 @@ def _make_dataproto(batch_size: int, *, is_wm: bool) -> DataProto:
     )
 
 
-def _make_reward_manager() -> RobRewardManager:
+def _make_reward_manager(*, use_wm_reward_proxy=True) -> RobRewardManager:
     config = SimpleNamespace(
         actor_rollout_ref=SimpleNamespace(
-            model=SimpleNamespace(action_token_len=7, action_chunks_len=1)
+            model=SimpleNamespace(action_token_len=7, action_chunks_len=1),
+            world_model=SimpleNamespace(use_wm_reward_proxy=use_wm_reward_proxy),
         ),
         verifier=SimpleNamespace(reward_coef=1.0),
     )
@@ -124,6 +125,41 @@ def _assert_raises_value_error(fn, *args, **kwargs) -> None:
 
 def main() -> None:
     plot_mod = _load_plot_log_metrics_module()
+
+    # Exercise the actual output builders, without constructing a model or env.
+    from verl.workers.rollout.rob_rollout_wm_pro import RobWMHFRolloutPro
+
+    output_builder = SimpleNamespace(
+        config=SimpleNamespace(action_chunks_len=8, use_proprio=False),
+        rm_threshold=0.5,
+    )
+    output_builder._attach_completion_fields = (
+        RobWMHFRolloutPro._attach_completion_fields.__get__(output_builder)
+    )
+    prompts = DataProto.from_dict(tensors={"task_id": torch.zeros(1, 1, dtype=torch.long)})
+    prompts.meta_info = {"return_rollouts": False, "use_wm": True}
+    history = [dict(
+        responses=torch.ones(1, 56, dtype=torch.long),
+        input_ids=torch.ones(1, 8, dtype=torch.long),
+        attention_mask=torch.ones(1, 8, dtype=torch.long),
+        pixel_values=torch.zeros(1, 3, 8, 8),
+        action=np.zeros((1, 8, 7), dtype=np.float32),
+        is_dummy=torch.tensor([i == 2]),
+    ) for i in range(3)]
+    records = [{"finish_step": 24, "complete": False}]
+    media = [{"wm_images": [np.zeros((8, 8, 3), dtype=np.uint8)] * 24,
+              "env_images": [np.zeros((8, 8, 3), dtype=np.uint8)] * 24,
+              "env_dones": [False] * 24, "pred_scores": [0.5] * 24}]
+    built = RobWMHFRolloutPro._prepare_output_batch_evolving(
+        output_builder, prompts, history, records, ["test task"], media, 1, 24
+    )
+    assert built.batch["valid_response_tokens"].item() == 16 * 7
+    assert built.batch["rm_scores"].flatten()[16 * 7 - 1].item() == 0.5
+    assert built.batch["rm_scores"].flatten()[16 * 7:].sum().item() == 0.0
+    built_wm = RobWMHFRolloutPro._prepare_output_batch_wm(
+        output_builder, prompts, history, records, [], 1, 24
+    )
+    assert built_wm.batch["valid_response_tokens"].item() == 24 * 7
 
     real = _make_dataproto(2, is_wm=False)
     wm = _make_dataproto(3, is_wm=True)
@@ -192,6 +228,7 @@ def main() -> None:
     assert len(broken_filtered) == 0
 
     prompt = _make_dataproto(2, is_wm=False)
+    prompt.meta_info["task_descriptions"] = ["stale-prompt-a", "stale-prompt-b"]
     rollout = _make_dataproto(2, is_wm=False)
     rollout.batch["task_id"] = rollout.batch["task_id"] + 100
     rollout.non_tensor_batch["task_descriptions"] = np.array(
@@ -260,6 +297,11 @@ def main() -> None:
         torch.tensor(0.3, dtype=rm_scores.dtype),
         atol=1e-6,
     )
+    disabled_rewards, disabled_metrics = _make_reward_manager(
+        use_wm_reward_proxy=False
+    )(clone_dataproto_for_replay(wm_reward))
+    assert torch.count_nonzero(disabled_rewards["rm_scores"]).item() == 0
+    assert disabled_metrics["reward_model_disabled"] == 1.0
 
     per_step = {
         0: {

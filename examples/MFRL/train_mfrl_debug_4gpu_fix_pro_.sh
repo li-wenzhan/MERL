@@ -209,7 +209,7 @@ fi
 # export NCCL_DEBUG=WARN
 export WANDB_MODE=disabled
 export WANDB_DISABLED=true
-# export WANDB_API_KEY="86afa5b168a8fbf4a1dfd98145f0c5d133ca103b"  #! wandb api key
+export WANDB_API_KEY="${WANDB_API_KEY:-}"
 # export WANDB_MODE=offline
 
 case "${PYTORCH_CUDA_ALLOC_CONF:-}" in
@@ -227,10 +227,10 @@ export TORCH_USE_CUDA_DSA=${TORCH_USE_CUDA_DSA:-0}
 export ROBOT_PLATFORM=LIBERO  #! Use LIBERO: ROBOT_PLATFORM=LIBERO,  Use Robotwin ROBOT_PLATFORM=ALOHA
 
 PROJECT_NAME="MFRL"
-SFT_MODEL_PATH="/mnt/afs/L202500276/model/openvla_oft_sft/Openvla-oft-SFT-libero10-trajall"  # ! server OpenVLA-OFT SFT checkpoint
-CKPT_PATH="./checkpoints"  # todo: saved ckpt path, include policy_model, world_model
+SFT_MODEL_PATH="${SFT_MODEL_PATH:-/mnt/afs/L202500276/model/openvla_oft_sft/Openvla-oft-SFT-libero10-trajall}"  # ! server OpenVLA-OFT SFT checkpoint
+CKPT_PATH="${CKPT_PATH:-./checkpoints}"  # todo: saved ckpt path, include policy_model, world_model
 
-DATASET_NAME="libero_10"  #! change the dataset name
+DATASET_NAME="${DATASET_NAME:-libero_10}"  #! change the dataset name
 VLA_NAME="openvla-oft"
 EXPERIMENT_DATE_TAG="0518"
 EXPERIMENT_PROFILE_TAG="debug-3gpu-512x-loss_w-pro"
@@ -246,7 +246,7 @@ VLA_DATASET_STATS_PATH="$SFT_MODEL_PATH/dataset_statistics.json"  # ! requires d
 NUM_GPUS=3  #! 总 GPU 数量 - 1; 剩 1 个给wm trainer
 WM_GPU_IDX=3  #! dedicate the 3rd GPU to wm trainer
 NUM_NODES=1
-ALIGN_PATH="${REPO_ROOT}/configs/align.json"  # ! repo-local default; override only if your runtime env file lives elsewhere
+ALIGN_PATH="${ALIGN_PATH:-${REPO_ROOT}/configs/align.json}"  # ! repo-local default; override only if your runtime env file lives elsewhere
 export MERL_RAY_START_MODE="${MERL_RAY_START_MODE:-cli}"
 source "${SCRIPT_DIR}/../ray_runtime.sh"
 ensure_merl_ray_runtime "$REPO_ROOT" "$EXPERIMENT_NAME"
@@ -281,9 +281,9 @@ wandb_mode="disabled"  #! 默认: online
 # actor_rollout_ref.ref.fsdp_config.param_offload=True
 
 #! added below
-world_model_config_path="${REPO_ROOT}/configs/wm_online_config.py"  # ! repo-local default; override only if you use a custom wm_online_config.py
+world_model_config_path="${world_model_config_path:-${REPO_ROOT}/configs/wm_online_config.py}"  # ! repo-local default; override only if you use a custom wm_online_config.py
 use_libero_pro=True  # ! keep True when using LIBERO_PRO as the online environment
-libero_pro_eval_config_path="${REPO_ROOT}/configs/evaluation_config.yaml"  # ! repo-local default; override only if you use a custom evaluation_config.yaml
+libero_pro_eval_config_path="${libero_pro_eval_config_path:-${REPO_ROOT}/configs/evaluation_config.yaml}"  # ! repo-local default; override only if you use a custom evaluation_config.yaml
 
 train_mode="MFRL"
 world_model_enable=False
@@ -534,3 +534,4 @@ HYDRA_FULL_ERROR=1 python -u -m verl.trainer.main_ppo \
     ++trainer.strict_mode_assert=$strict_mode_assert \
     ++trainer.strict_validate_rollout=$strict_validate_rollout \
     ++trainer.train_mode=$train_mode \
+    "$@"
