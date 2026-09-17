@@ -8,6 +8,36 @@ import unittest
 
 
 class TrainingBudgetTests(unittest.TestCase):
+    def test_real_training_dispatch_preserves_the_requested_horizon(self):
+        path = Path(__file__).resolve().parents[1] / "verl/trainer/ppo/ray_trainer.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        fit = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "fit")
+        helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                      and n.name == "_get_positive_int_attr")
+        setup = None
+        for node in ast.walk(fit):
+            body = getattr(node, "body", None)
+            if not isinstance(body, list):
+                continue
+            for index, statement in enumerate(body):
+                if (isinstance(statement, ast.Assign)
+                        and ast.unparse(statement.targets[0]) == "gen_batch.meta_info"):
+                    setup = body[index:next(i for i in range(index + 1, len(body))
+                                            if isinstance(body[i], ast.Assign)
+                                            and ast.unparse(body[i].targets[0]) == "gen_batch_output")]
+        self.assertIsNotNone(setup)
+        code = compile(ast.Module(body=[helper, *setup], type_ignores=[]), str(path), "exec")
+        for horizon in (16, 384, None):
+            with self.subTest(horizon=horizon):
+                rollout = SimpleNamespace(train_max_steps=horizon)
+                owner = SimpleNamespace(
+                    config=SimpleNamespace(actor_rollout_ref=SimpleNamespace(rollout=rollout)),
+                    tokenizer=SimpleNamespace(eos_token_id=2, pad_token_id=0))
+                batch = SimpleNamespace(meta_info={})
+                exec(code, {"self": owner, "gen_batch": batch, "n_samples": 4})
+                self.assertEqual(batch.meta_info.get("max_steps"), horizon)
+                self.assertEqual(batch.meta_info["n_samples"], 4)
+
     def test_both_loops_stop_at_the_budget_including_resumed_runs(self):
         path = Path(__file__).resolve().parents[1] / "verl/trainer/ppo/ray_trainer.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))

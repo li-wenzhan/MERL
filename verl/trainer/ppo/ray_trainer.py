@@ -2829,6 +2829,11 @@ class RayTrainer(object):
                             "n_samples": n_samples,
                             "pad_token_id": self.tokenizer.pad_token_id,
                         }
+                        train_max_steps = _get_positive_int_attr(
+                            self.config.actor_rollout_ref.rollout, "train_max_steps", 0
+                        )
+                        if train_max_steps > 0:
+                            gen_batch.meta_info["max_steps"] = train_max_steps
 
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(
                             prompts=gen_batch
