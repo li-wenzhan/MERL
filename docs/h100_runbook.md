@@ -38,9 +38,13 @@ Select `--job evaluate` for real-only evaluation of an exported actor or
 allows pipeline bring-up without fixed shards, and produces no fixed WM metrics.
 Use `--wm-eval fixed --shared-wm-eval /data/wm_eval` after collecting both splits.
 
-Each fresh run writes its resolved config, command, source hashes, Git revision,
-package versions, GPU information and final status into `launch_manifest.json`,
-plus a complete `run.log`. These are not a full RNG/optimizer resume checkpoint.
+Each fresh run writes its resolved config, command, selected runtime/config file
+hashes, package versions, GPU information and final status into
+`launch_manifest.json`, plus the trainer's `run.log`. Runtime performs no Git
+commands, ownership checks, pulls or remote comparisons. An optional
+`MERL_CODE_REVISION` is a user-supplied label, not a verified revision. Code
+synchronization is managed outside the ACP job. Hugging Face loading defaults
+to offline mode. These records are not a full RNG/optimizer resume checkpoint.
 Source SFT weights are symlinked into run-specific actor assets, never overwritten.
 Existing run directories and nonempty collection splits are rejected.
 
@@ -63,6 +67,65 @@ Override `MERL_REPO`, `MERL_ENV`, `SFT_CHECKPOINT`, `WM_CHECKPOINT`, `OUTPUT_ROO
 `ACTOR_GPUS` or `SHARED_WM_EVAL` via environment variables. Never replace ACP's
 `CUDA_VISIBLE_DEVICES` with physical indices from CCI. EGL is the default;
 `scripts/runtime/libero_glx_runtime.sh` is available for explicit GLX setups.
+
+## Web-submitted ACP jobs and persistent console logs
+
+The outer wrapper starts before Python or asset checks. It streams both stdout
+and stderr to the web console and a unique UTC-named file under
+`tmp_files/acp_logs/`. `ACP_LOG_DIR` can select another persistent directory.
+The paired `.status.json` records command/logging exit codes and elapsed seconds;
+neither a failed command nor a failed `tee` is reported as success. The manifest
+links to this console log. A platform kill can leave a partial log without a final
+status file; platform messages emitted before Bash starts are outside this log.
+
+The updated private payload enables this wrapper itself. The following command
+also works with the older private payload: `MERL_ACP_LOGGED=1` prevents nested
+logging when the payload already supports it. This requires the updated tracked
+launcher and logging wrapper; it never updates or checks code versions on ACP.
+
+```bash
+set -euo pipefail
+cd /mnt/afs/task3_2/L202500276_lwz/projects/MeRL_new
+mode=MFRL
+run_id="${mode,,}_smoke_$(date -u +%Y%m%dT%H%M%SZ)"
+bash scripts/run_logged.sh env MERL_ACP_LOGGED=1 \
+  bash tmp_files/acp_merl.sh "$mode" train "$run_id" \
+  --smoke -- trainer.save_freq=1
+```
+
+Start with MFRL; after a verified actor update and checkpoint, submit MBRL and MERL
+as separate jobs by changing `mode`. The unique name avoids partially created
+directories left by earlier startup failures. Preserve those earlier artifacts.
+
+Planning estimates for one smoke job on four H100 80GB GPUs (not measured ACP
+training timings):
+
+| Mode | Estimated elapsed time | Suggested initial reservation |
+| --- | --- | --- |
+| MFRL | 15-40 minutes | 60 minutes |
+| MBRL | 20-60 minutes | 90 minutes |
+| MERL | 30-90 minutes | 120 minutes |
+
+MFRL uses three actor GPUs and leaves the fourth idle; if ACP supports a
+three-GPU allocation, that is sufficient for the same MFRL profile. MBRL/MERL
+require the fourth GPU for the dedicated WM worker.
+
+These include cold imports/model loading, environment process startup, a short
+outer training step and actor checkpoint writing. The supplied ACP failure log
+shows approximately 40-50 seconds from the first completed SFT check to failure
+at manifest creation; it contains no actor/WM training timing. Prior CCI runs took
+several minutes to initialize Ray, models and environment subprocesses. Shared
+filesystem bandwidth and WM paths can dominate; refine reservations from the
+new phase timings and `.status.json`, not from these initial estimates. These
+estimates exclude queueing/image startup and do not apply to full experiments.
+The corrected MERL `--check` was run from a temporary tree without `.git` and
+passed in 57 seconds on CCI (SFT 12.7s, LIBERO/actor imports 30.2s, WM assets 12.3s).
+The full launcher manifest/exit path is also tested with Git subprocess access
+disabled. This validates startup and logging, not a GPU training update.
+
+The 2026-09-17 startup failure was Git's shared-directory ownership rejection
+during manifest creation. Asset checks passed; training had not started. No
+`safe.directory` workaround or network access is required by the corrected launcher.
 
 ## Validation gates
 
@@ -249,8 +312,8 @@ run at one completed outer step. This limit counts completed loop iterations,
 not gradient steps or environment interactions. For a checkpoint-saving smoke,
 append `-- trainer.save_freq=1`. Record optimizer-step metrics as well as the
 process exit status, since a guarded or zero-signal update can leave weights
-unchanged. The regression suite currently contains 40 passing tests on both the
-local CPU environment and CCI.
+unchanged. The regression suite currently contains 44 passing tests on Linux CCI.
+On Windows, the three Bash integration tests are skipped; the other 41 pass.
 
 Actor updates now reject non-finite gradient norms and propagate optimizer errors.
 AdamW state compatibility is handled before stepping; a potentially partial update

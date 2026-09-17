@@ -73,9 +73,15 @@ prints commands without asset/GPU access. Extra Hydra `key=value` overrides foll
 `--`; mode, checkpoint, output and layout invariants are protected.
 
 Every run creates a fresh `checkpoints/<mode>/<experiment>` directory containing
-`launch_manifest.json`, resolved configuration, source hashes and `run.log`. GPU
+`launch_manifest.json`, resolved configuration, selected source hashes and `run.log`. GPU
 visibility is preserved; unrelated Ray jobs are never killed. The launcher does
 not automatically resume. Full optimizer/RNG/replay restoration needs a separate audit.
+
+ACP startup requires neither Git nor external network access. To capture the whole
+console, including preflight failures, prefix a command with
+`bash scripts/run_logged.sh`; logs and exit/timing summaries go to
+`tmp_files/acp_logs/` (`ACP_LOG_DIR` overrides the location). Hugging Face loading
+defaults to offline mode. Code synchronization is managed outside the job.
 
 WM evaluation defaults to **off** while bringing up the pipeline. Collect both
 fixed splits with `examples/generate_shared_wm_eval_dataset.sh`, then enable it

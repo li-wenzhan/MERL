@@ -10,6 +10,7 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "configs/launch_profiles.json"
@@ -171,6 +172,7 @@ def compose_config(overrides):
 def runtime_env():
     env = dict(os.environ)
     defaults = {"ROBOT_PLATFORM": "LIBERO", "WANDB_MODE": "disabled", "WANDB_DISABLED": "true",
+                "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
                 "NCCL_DEBUG": "WARN", "TORCH_DISTRIBUTED_DEBUG": "OFF", "TOKENIZERS_PARALLELISM": "false",
                 "MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl", "MERL_LIBERO_ENV_BACKEND": "egl",
                 "MERL_LIBERO_EGL_DEVICE_ID": "0", "MERL_ENV_MP_START_METHOD": "spawn",
@@ -204,8 +206,11 @@ def main():
         p.error("asset checks and execution require the Linux CCI/ACP environment")
 
     def check(script, *arguments):
+        started = time.monotonic()
+        print(f"[launch] {datetime.now(timezone.utc).isoformat()} preflight begin: {script}", flush=True)
         subprocess.run([sys.executable, str(ROOT / "scripts" / script), *map(str, arguments)],
                        cwd=ROOT, env=env, check=True)
+        print(f"[launch] preflight passed: {script}; elapsed_seconds={time.monotonic() - started:.1f}", flush=True)
 
     checkpoint = args.sft_checkpoint.expanduser().resolve()
     stats = json.loads((checkpoint / "dataset_statistics.json").read_text())
@@ -244,9 +249,14 @@ def main():
                                  "wm_checkpoint": str(args.wm_checkpoint) if wm["enable"] else None},
                 "started_utc": datetime.now(timezone.utc).isoformat(), "command": command,
                 "resolved_config": resolved, "devices": devices, "python": sys.version,
-                "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-                "git_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()),
-                "source_hashes": {str(path): digest(path) for path in (PROFILE, args.eval_config.expanduser().resolve(), args.wm_config.expanduser().resolve())},
+                # ACP may run a copied tree without Git or network access.
+                "code_revision_label": env.get("MERL_CODE_REVISION"),
+                "console_log": env.get("MERL_CONSOLE_LOG"),
+                "source_hashes": {str(path): digest(path) for path in (
+                    PROFILE, args.eval_config.expanduser().resolve(), args.wm_config.expanduser().resolve(),
+                    ROOT / "merl/launch.py", ROOT / "verl/trainer/main_ppo.py",
+                    ROOT / "verl/trainer/ppo/ray_trainer.py", ROOT / "verl/workers/fsdp_workers.py",
+                    ROOT / "verl/workers/actor/dp_rob.py", ROOT / "verl/workers/rollout/rob_rollout_wm_pro.py")},
                 "packages": {name: importlib.metadata.version(name) for name in ("torch", "transformers", "ray", "numpy")},
                 "cuda_visible_devices": env.get("CUDA_VISIBLE_DEVICES"), "status": "preparing"}
     manifest_path = run_dir / "launch_manifest.json"

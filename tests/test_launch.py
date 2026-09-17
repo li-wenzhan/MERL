@@ -44,8 +44,10 @@ class LaunchTests(unittest.TestCase):
             hydra_args(cfg, ["trainer.val_only=false"])
 
     def test_preserves_scheduler_visible_devices_and_network_selection(self):
-        with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "GPU-abc,GPU-def", "NCCL_SOCKET_IFNAME": "eth0"}):
+        with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "GPU-abc,GPU-def", "NCCL_SOCKET_IFNAME": "eth0"}, clear=True):
             env = runtime_env()
+            self.assertEqual(env["HF_HUB_OFFLINE"], "1")
+            self.assertEqual(env["TRANSFORMERS_OFFLINE"], "1")
             self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "GPU-abc,GPU-def")
             self.assertEqual(env["NCCL_SOCKET_IFNAME"], "eth0")
             self.assertNotEqual(env.get("GLOO_SOCKET_IFNAME"), "bond0")
