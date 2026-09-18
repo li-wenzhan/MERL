@@ -71,25 +71,8 @@ def main() -> None:
     worker_config = _build_libero_env_worker_config(rollout_config)
     if _get_libero_primary_backend(worker_config) == "egl":
         render_devices = str(getattr(worker_config, "env_render_cuda_visible_devices", ""))
-        original_cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
-        try:
-            for item in [x.strip() for x in render_devices.split(",") if x.strip()] or [""]:
-                if item:
-                    os.environ["CUDA_VISIBLE_DEVICES"] = item
-                resolved = _resolve_mujoco_egl_device_id(
-                    SimpleNamespace(mujoco_egl_device_id="auto"),
-                    visible_devices_override=render_devices,
-                )
-                if resolved != "0":
-                    raise RuntimeError(
-                        "auto EGL device must resolve to local MuJoCo device 0, "
-                        f"got {resolved!r} with simulated CUDA_VISIBLE_DEVICES={item!r}"
-                    )
-        finally:
-            if original_cuda_visible is None:
-                os.environ.pop("CUDA_VISIBLE_DEVICES", None)
-            else:
-                os.environ["CUDA_VISIBLE_DEVICES"] = original_cuda_visible
+        resolved = _resolve_mujoco_egl_device_id(worker_config, visible_devices_override=render_devices or None)
+        print(f"[preflight] renderer CUDA_VISIBLE_DEVICES={render_devices or os.environ.get('CUDA_VISIBLE_DEVICES', '')} EGL={resolved}", flush=True)
     mp_ctx = _get_env_mp_context(worker_config)
     client = None
     try:

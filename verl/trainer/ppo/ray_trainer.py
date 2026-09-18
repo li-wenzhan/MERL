@@ -6023,6 +6023,10 @@ class RayTrainer(object):
                                     "real_rollout_calibration (after filter)",
                                 )
 
+                                if train_mode == "ONLINE_MBRL":
+                                    from merl.modes import require_online_real_batch
+                                    require_online_real_batch(roll_batch_real_calibration, real_collection_sample_target)
+
                                 if _is_valid_dataproto(roll_batch_real_calibration):
                                     calibration_real_batch = roll_batch_real_calibration
                                     self._wm_weak_update_last_calibration_step = int(

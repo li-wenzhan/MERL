@@ -438,26 +438,8 @@ def _resolve_mujoco_egl_device_id(
     )
     if raw_value is None:
         raw_value = os.environ.get("MERL_LIBERO_EGL_DEVICE_ID", "auto")
-    text = str(raw_value or "").strip()
-
-    if text.lower() in {"", "auto", "default"}:
-        # MuJoCo EGL indexes the devices visible inside this process, not Ray's
-        # global GPU ids. On the target H100/H200 nodes it commonly exposes only
-        # local EGL device 0 even when CUDA_VISIBLE_DEVICES contains 0,1,2,3.
-        return "0"
-    if text.lower() in {"none", "unset", "disable", "disabled"}:
-        return ""
-
-    requested_idx = _parse_non_negative_int(text)
-    if requested_idx is None:
-        print(
-            "[LIBERO runtime] invalid MUJOCO_EGL_DEVICE_ID="
-            f"{text!r}; falling back to local EGL device 0",
-            flush=True,
-        )
-        return "0"
-
-    return str(requested_idx)
+    from verl.utils.libero_runtime import resolve_egl_device_id
+    return resolve_egl_device_id(raw_value, visible_devices_override or None)
 
 
 def _resolve_libero_env_lock_path(config, display: str) -> str:

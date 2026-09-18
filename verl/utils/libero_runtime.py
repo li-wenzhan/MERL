@@ -4,6 +4,25 @@ from typing import Any, Dict, MutableMapping, Optional
 _STABLE_HEADLESS_BACKENDS = {"egl", "osmesa"}
 
 
+def resolve_egl_device_id(requested="auto", visible_devices=None) -> str:
+    """Use a visible device identifier, not a rank-local CUDA ordinal.
+
+    robosuite checks this identifier against CUDA_VISIBLE_DEVICES before loading
+    its EGL context. In particular, a Ray worker with visibility '2' needs '2'.
+    """
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "") if visible_devices is None else visible_devices
+    devices = [part.strip() for part in str(visible or "").split(",") if part.strip()]
+    text = str(requested or "auto").strip().lower()
+    if text in {"none", "unset", "disable", "disabled"}:
+        return ""
+    if text in {"auto", "default", ""}:
+        text = devices[0] if devices else "0"
+    if not text.isdigit() or (devices and text not in devices):
+        raise ValueError(f"EGL device {text!r} is not a numeric device in CUDA_VISIBLE_DEVICES={visible!r}; "
+                         "use auto with numeric visibility or configure a compatible rendering device explicitly")
+    return text
+
+
 def _normalize(value: Optional[str]) -> str:
     return str(value or "").strip().lower()
 

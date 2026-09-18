@@ -27,3 +27,10 @@ def require_online_wm_sync(results):
     rows = [results] if isinstance(results, dict) else results
     if not rows or any(not isinstance(row, dict) or not row.get("loaded") for row in rows):
         raise RuntimeError(f"ONLINE_MBRL failed to synchronize updated WM weights: {results}")
+
+
+def require_online_real_batch(batch, expected_samples):
+    actual = 0 if batch is None else len(batch)
+    if actual < expected_samples:
+        raise RuntimeError(f"ONLINE_MBRL real collection incomplete: {actual}/{expected_samples} valid samples. "
+                           "Fix environment initialization/rollout errors before updating the actor or WM.")
