@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from torch.nn.attention import SDPBackend, sdpa_kernel
 import yaml
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -407,6 +408,9 @@ def main() -> None:
     args.svd_model_path = _str_or_none(cli.svd_model_path) or args.svd_model_path
     args.clip_model_path = _str_or_none(cli.clip_model_path) or args.clip_model_path
     args.ckpt_path = _str_or_none(cli.ckpt_path) or _str_or_none(args.ckpt_path)
+    # Full checkpoints include the proxy's ResNet weights; do not download an
+    # ImageNet initialization that will immediately be overwritten.
+    args.load_from_ckpt = bool(args.ckpt_path or _str_or_none(cli.resume_from))
     args.is_img_pregenerated = False
     args.num_views = 1
     args.img_resizes = (int(args.height), int(args.width))
@@ -477,7 +481,7 @@ def main() -> None:
         action_scale=cli.action_scale,
         action_offset=cli.action_offset,
         max_windows=cli.max_val_windows,
-    )
+    ) if cli.val_ratio > 0 else None
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -494,9 +498,13 @@ def main() -> None:
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=False,
-    )
+    ) if val_dataset is not None else None
 
     model = CtrlWorld(args)
+    # Reduced-precision compute must not round small Adam updates away.
+    for parameter in model.parameters():
+        if parameter.requires_grad:
+            parameter.data = parameter.data.float()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     resume_from = _str_or_none(cli.resume_from)
     global_step = 0
@@ -512,9 +520,12 @@ def main() -> None:
         _load_model_checkpoint(model, ckpt_path, label="--ckpt-path")
     model.train()
 
-    model, optimizer, train_loader, val_loader = accelerator.prepare(
-        model, optimizer, train_loader, val_loader
-    )
+    if val_loader is None:
+        model, optimizer, train_loader = accelerator.prepare(model, optimizer, train_loader)
+    else:
+        model, optimizer, train_loader, val_loader = accelerator.prepare(
+            model, optimizer, train_loader, val_loader
+        )
 
     if accelerator.is_main_process:
         _write_json(
@@ -522,7 +533,9 @@ def main() -> None:
             {
                 "data_root": cli.data_root,
                 "train_windows": len(train_dataset),
-                "val_windows": len(val_dataset),
+                "val_windows": len(val_dataset) if val_dataset is not None else 0,
+                "split_unit": "complete_episode",
+                "validation_enabled": val_dataset is not None,
                 "image_key": cli.image_key,
                 "action_key": cli.action_key,
                 "action_slice": cli.action_slice,
@@ -538,7 +551,7 @@ def main() -> None:
     )
     logger.info("***** Real-world HDF5 Ctrl-World fine-tuning *****")
     logger.info(f"  Train windows = {len(train_dataset)}")
-    logger.info(f"  Val windows = {len(val_dataset)}")
+    logger.info(f"  Val windows = {len(val_dataset) if val_dataset is not None else 0}")
     logger.info(f"  Total batch size = {total_batch_size}")
     logger.info(f"  Max train steps = {args.max_train_steps}")
     logger.info(f"  Resume global step = {global_step}")
@@ -552,16 +565,21 @@ def main() -> None:
     while global_step < args.max_train_steps:
         for batch in train_loader:
             with accelerator.accumulate(model):
-                with accelerator.autocast():
+                # Keep checkpoint recomputation on the same stable SDPA backend.
+                with sdpa_kernel(SDPBackend.MATH), accelerator.autocast():
                     loss_dict, _ = model(batch)
                     total_loss = _build_total_loss(
                         loss_dict,
                         self_forcing_weight=args.self_forcing_weight,
                         reward_loss_weight=float(cli.reward_loss_weight),
                     )
-                accelerator.backward(total_loss)
+                    if not torch.isfinite(total_loss):
+                        raise FloatingPointError("non-finite physical-data simulator loss")
+                    accelerator.backward(total_loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                    accelerator.unscale_gradients(optimizer=optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm,
+                                                   error_if_nonfinite=True)
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -576,7 +594,7 @@ def main() -> None:
                     print(f"[real-wm-finetune] step={global_step} metrics={metrics}")
 
                 if (
-                    args.validation_steps > 0
+                    val_loader is not None and args.validation_steps > 0
                     and global_step % args.validation_steps == 0
                 ):
                     metrics = _validate(

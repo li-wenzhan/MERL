@@ -1,5 +1,67 @@
 # Research-to-code audit
 
+## Camera-ready release audit (2026-10-08)
+
+The final camera-ready main text and appendix supersede the earlier submission
+and rebuttal as the mechanism specification. The default public launcher now
+selects the lifecycle described in [camera-ready protocol](camera_ready_protocol.md).
+The discrepancy table below is retained as the **historical starting point**;
+it describes the legacy implementation, not the new default.
+
+Resolved discrepancies include recursive predicted-observation policy input,
+stored-action calibration at depths 1–4, frozen residual inference, measured
+stage error and 8–32-step horizons, inverse-error chunk replay, separately
+normalized branch objectives, and one shared simulator GPU. Added the frozen
+simulator plus trust control. The simulator's conditioning frame is now the
+last history frame; the old first-future-frame index leaked a target into its
+conditioning. Soft proxy supervision and inference now use matching pre-action
+pairs and image ranges. Checkpoints include optimizer/scheduler/RNG/trust state.
+
+These are new implementations. Original numerical results, residual networks,
+full hyperparameter records and trained comparison checkpoints are not
+recovered by editing code. The 100-stage infrastructure example also does not
+specify the complete benchmark learning-curve budget: some reported S2T-H values
+exceed 100. Original stage limits and checkpoint grids remain needed.
+
+The publication scope is MERL and its component controls; external baseline
+ports are intentionally excluded at the authors' request. Separate physical
+WM tools are available, but the simulation entrypoint does not implement the
+complete physical-robot fixed-data policy adaptation experiment.
+
+### Verified runtime evidence
+
+The 2026-10-08 checks used an isolated Linux copy and local pretrained assets;
+existing experiments and checkpoints were preserved. Full logs and fixture
+artifacts are retained privately under `tmp_files/release_validation/`.
+
+| Check | Observed result | Scope |
+| --- | --- | --- |
+| Contract suite | 82 tests pass on Linux; Windows passes with three Linux Bash tests skipped | Includes actual Hydra composition for five modes, masks, gradients, trust, RNG restoration and episode-disjoint physical-data splits |
+| Fresh grounded export | Six valid trajectories; 2,551 executed actions and `T+1` observations per trajectory | Actual single-GPU policy collection with the 512-action cap; training data, not held-out performance |
+| Actual simulator update | Visual UNet and proxy parameters change; finite losses/gradients | One engineering update with pretrained weights, FP32 trainable storage and BF16 computation |
+| No-oracle lifecycle | Depths 1–4, frozen residual predictor, partial 5-step prediction, zero calibration environment calls | Two diffusion steps and reduced residual fitting for software validation; not held-out residual accuracy |
+| Simulator conditioning | Changing future GT does not alter the actual UNet conditioning channels | Verifies the past-only anchor boundary |
+| Simulator checkpoint | Strict full-weight, optimizer, scheduler, residual and RNG roundtrip; reconstructed stage context | Repeated request seeds preserve predictions across request order and restoration |
+| Actor stage | Real rollout, categorical old log-probabilities, 48-chunk update and sharded/runtime save complete | One H100, BF16 model storage, 32-action cap; about 14 minutes including cold startup |
+| Actor resume/evaluation | Restore stage 1, continue stage 2, save again, evaluate two held-out states and export videos/PNGs/trajectories; exit 0 | Same engineering precision/cap; about 18 minutes. Both short trials fail with no invalid rollouts |
+| Auxiliary HDF5 WM tool | Train, episode-disjoint validation and model/optimizer checkpoint save complete; finite losses | Simulation-derived HDF5 fixture and auxiliary synthetic targets; not physical-robot experimental evidence |
+
+The short actor fixture has zero GRPO gradient because all candidates fail.
+It establishes execution/checkpoint plumbing, not a learned policy improvement.
+The simulator update peaks at approximately 34.2 GiB on the tested H100.
+Default fused SDPA produced non-finite visual gradients despite a finite loss;
+math SDPA passed the actual-model forward/backward update and is now used for
+simulator optimization, including gradient-checkpoint recomputation.
+
+Single-H100 validation cannot certify three-rank FSDP, full FP32 actor training,
+actor-to-simulator RPCs across the complete four-GPU allocation, or a 100-stage
+run. These remain ACP runtime gates. Start with the full-budget one-stage
+command in [the runbook](h100_runbook.md), retaining the configured simulator
+update and real rollout budgets. Passing it still does not reproduce benchmark
+numbers or demonstrate method superiority.
+
+## Historical audit of the pre-release implementation
+
 Baseline inspected: `ceefa270d972c8ee2e466e1170cab689c8be008a`.
 Sources: local submission PDF (28 pages) and one-page CoRL rebuttal under
 `tmp_files/`. Those private materials are ignored by Git and are not republished.
@@ -54,10 +116,11 @@ and resolves a conflicting rollout instruction merge exposed by the existing
 contract verifier. These changes alter effective training signals; previous runs
 are not directly comparable without recording the code revision.
 
-Hardcoded W&B credentials were found in the tracked runtime JSON and launcher
-scripts and removed from the current files. They remain in the pre-existing Git
-history and require revocation/rotation by the account owner; no history rewrite
-has been performed. Runtime credentials must come from the process environment.
+Hardcoded W&B and Hugging Face credentials were found in tracked runtime,
+launcher and vendored sources and removed from current files. They remain in
+the pre-existing Git history and require revocation/rotation by the account
+owner; no history rewrite has been performed. Runtime credentials must come
+from the process environment.
 
 Do not delete vendored `verl`/OpenSora modules or `*_old.py` merely because their
 names look obsolete. Dynamic imports, config entrypoints and standalone offline

@@ -1,7 +1,7 @@
 # ! Reader checklist:
-# ! 1) Set libero_pro_root to your local LIBERO_PRO clone root.
+# ! 1) Set LIBERO_PRO_ROOT or fill in libero_pro_root with your local checkout.
 # ! 2) bddl/init/script/OOD YAML paths are derived automatically at runtime.
-libero_pro_root: "/mnt/afs/task3_2/L202500276_lwz/benchmark/LIBERO-PRO" # ! todo: set to your local LIBERO_PRO clone root
+libero_pro_root: ""
 
 # todo: change the perturbation type (single)
 # Environment perturbations require generated or downloaded OOD assets.

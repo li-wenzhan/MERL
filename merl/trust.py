@@ -117,10 +117,9 @@ class CalibrationBatch:
             raise ValueError("each window needs trajectory and anchor provenance")
         if self.anchor_ids != self.predicted_anchor_ids:
             raise ValueError("grounded and predicted windows have different anchors")
-        # Calibration uses exact one-chunk anchored windows. Recursive held-out
-        # matched futures are never included in the online predictor fit.
-        if not (f.depth == 1).all():
-            raise ValueError("calibration must use exact grounded depth-one windows")
+        # Stored action sequences can be recursively replayed through predicted
+        # observations. Their recorded futures remain labels, never features.
+        # Whole-trajectory evaluation splits are excluded above at every depth.
         if self.grounded_latents.shape != f.imagined_latents.shape:
             raise ValueError("grounded/predicted latent shapes differ")
         if self.grounded_actions.shape != f.actions.shape:

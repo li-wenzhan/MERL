@@ -2,6 +2,18 @@
 
 ## Mode contract
 
+The default camera-ready `ONLINE_MBRL` enables simulator evolution with fixed
+mixing/horizon, uniform imagined replay and unit imagined weights. It shares
+the real/imagined objective and grounded allowance with MERL. Simulator update
+precedes imagination at the same stage. `STATIC_TRUST` freezes the simulator and
+retains MERL's calibration, scheduling and chunk trust. See the full
+[camera-ready control table](camera_ready_protocol.md).
+
+### Historical legacy behavior
+
+The following mode descriptions concern `--protocol legacy` only. They are
+retained to interpret earlier artifacts; the new default does not use the mirror.
+
 `ONLINE_MBRL` is a new baseline implementation. Previously the entrypoint froze
 MBRL and the trainer allowed simulator updates only in MERL; setting `fine_tune`
 alone could not create this baseline.
@@ -27,8 +39,8 @@ anchor, proxy-reward or warmup overrides. `imag_horizon_min` sets its fixed
 horizon; WM loss and residual errors cannot change its horizon or actor ratio.
 
 This inherits the existing **grounded mirror** WM rollout implementation. It is
-not a new no-oracle recursive policy rollout. MERL's independent no-oracle core
-is still not integrated. The new baseline is not by itself a clean
+not a new no-oracle recursive policy rollout. The default camera-ready protocol
+integrates no-oracle recursive imagination. This legacy baseline is not a clean
 `MERL minus trust` ablation: actor real/imagined mixture and reward routing also
 differ. Report those differences and the additional real interaction cost.
 
@@ -79,7 +91,7 @@ bash scripts/run_logged.sh python -m merl.wm_visual_compare \
   --checkpoint MBRL=/models/ctrl-world.pt \
   --checkpoint ONLINE_MBRL=/outputs/online/world_model/global_step_N/world_model.pth \
   --checkpoint MERL=/outputs/merl/world_model/global_step_N/world_model.pth \
-  --start 64 --horizon 64 --inference-steps 8 --rollout recursive \
+  --start 64 --horizon 32 --inference-steps 8 --rollout recursive \
   --output tmp_files/wm_visuals/comparison_001
 ```
 

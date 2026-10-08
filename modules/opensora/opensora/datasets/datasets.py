@@ -71,7 +71,7 @@ def read_specific_frames(video_path: str, indices: list) -> list:
     # 补零的索引(0)可能会重复出现，我们需要保留它们
     # 因此，我们直接使用传入的indices，并在读取时处理
     unique_indices = sorted(list(set(i for i in indices if i >= 0)))
-    
+
     if not unique_indices: # 如果所有索引都是0
         # 假设我们需要一个黑色的帧
         # 从视频中读取第一帧作为模板来获取 H, W, C
@@ -86,7 +86,7 @@ def read_specific_frames(video_path: str, indices: list) -> list:
 
     frame_map = {}
     target_idx_ptr = 0
-    
+
     try:
         with av.open(video_path) as container:
             stream = container.streams.video[0]
@@ -98,7 +98,7 @@ def read_specific_frames(video_path: str, indices: list) -> list:
                     frame_map[frame_count] = frame.to_ndarray(format='rgb24')
                     target_idx_ptr += 1
                 frame_count += 1
-        
+
         # 根据原始的indices（包含重复和0）构建最终的帧列表
         # 使用第一帧作为0索引的填充
         first_frame_data = frame_map[unique_indices[0]]
@@ -113,11 +113,11 @@ def read_specific_frames(video_path: str, indices: list) -> list:
 
 @DATASETS.register_module()
 class SimpleVLALIBERODataset(Dataset):
-    def __init__(self, 
+    def __init__(self,
                 data_path,
-                stats_path, 
-                Ta=8, 
-                To=4, 
+                stats_path,
+                Ta=8,
+                To=4,
                 action_dim = 7,
                 image_size = (256, 256),
                 stride=1):
@@ -214,7 +214,7 @@ class LiberoContinueDataset(torch.utils.data.Dataset):
         self.action_dim = action_dim
         self.context_length = To + Ta
         self.task_name = "libero_10_no_noops"
-        
+
         videos_dir = os.path.join(data_path, 'videos')
         actions_dir = os.path.join(data_path, 'actions')
 
@@ -227,7 +227,7 @@ class LiberoContinueDataset(torch.utils.data.Dataset):
                 continue
             match = re.match(r'(.*)_finish_step_(\d+)\.mp4', video_filename)
             if not match: continue
-            
+
             base_name, finish_step = match.groups()
             finish_step = int(finish_step)
             video_path = os.path.join(videos_dir, video_filename)
@@ -276,18 +276,18 @@ class LiberoContinueDataset(torch.utils.data.Dataset):
                 frame_tf = tf.image.resize(frame_tf, size=self.image_size, method="lanczos3", antialias=True)
                 frame_tf = tf.cast(tf.clip_by_value(tf.round(frame_tf), 0, 255), tf.uint8)
                 processed_frames.append(frame_tf.numpy())
-            
+
             video_np = np.stack(processed_frames)
             video = torch.from_numpy(video_np)
 
             with open(action_path, "rb") as f:
                 actions = np.load(f)
-            
+
             # 补零的动作也用第0个动作填充
             action_indices_to_fetch = [max(0, idx) for idx in frame_indices[self.To:]]
             action_list = [actions[idx] for idx in action_indices_to_fetch]
             action = np.stack(action_list)
-            
+
             action = (2 * ((action - self.q01[self.task_name]) / (self.q99[self.task_name] - self.q01[self.task_name]))) - 1
             action = action.reshape(-1, self.action_dim)
 
@@ -320,7 +320,7 @@ class LiberoDataset(torch.utils.data.Dataset):
         To = 4,
         Ta = 8,
         image_size=(224, 224),
-        action_dim=7, 
+        action_dim=7,
     ):
         if not isinstance(data_paths, list):
             data_paths = [data_paths]
@@ -328,7 +328,7 @@ class LiberoDataset(torch.utils.data.Dataset):
         self.To = To
         self.Ta = Ta
         # List to hold all samples
-        self.context_length = To + Ta 
+        self.context_length = To + Ta
         samples = []
         for data_path_idx, data_path in tqdm(enumerate(data_paths), total = len(data_paths), desc = "loading dataset"):
             if data_path_idx != 0:
@@ -359,9 +359,9 @@ class LiberoDataset(torch.utils.data.Dataset):
 
                         for i in range(Ta, episode_num):
                             samples.append((task_name, tmp_images_path, tmp_actions_path, [max(0, i - context_length + 1 + j) for j in range(context_length)]))
-    
+
                         return samples
-                    
+
                     # Use ThreadPoolExecutor for parallel processing
                     with ThreadPoolExecutor(32) as executor:
                         # Submit tasks to executor
@@ -391,7 +391,7 @@ class LiberoDataset(torch.utils.data.Dataset):
                 continue
             self.q01[task_name] = np.array(self.dataset_statistics[task_name]['action']['q01'])
             self.q99[task_name] = np.array(self.dataset_statistics[task_name]['action']['q99'])
-        
+
         self.processor = AutoProcessor.from_pretrained("/mnt/hdfs/zhufangqi/pretrained_models/Haozhan72/Openvla-oft-SFT-libero10-traj1", trust_remote_code=True)
         self.action_tokenizer = ActionTokenizer(self.processor.tokenizer)
 
@@ -431,7 +431,7 @@ class LiberoDataset(torch.utils.data.Dataset):
             images_path = [os.path.join(images_path, f"{idx}.png") for idx in idxs]
         else:
             images_path = [os.path.join(images_path, f"{(idx):03d}.png") for idx in idxs]
-        
+
 
         with open(actions_path, "rb") as f:
             actions = np.load(f)
@@ -474,8 +474,8 @@ class LiberoDataset(torch.utils.data.Dataset):
         # imageio.mimwrite('output.mp4', rec_video, fps=3)
 
 
-        ret = {"video": video, 
-               "fps": 3, 
+        ret = {"video": video,
+               "fps": 3,
                "action": action,
                "num_frames": video.shape[1],
                "height": video.shape[2],
@@ -499,7 +499,7 @@ class LiberoDataset(torch.utils.data.Dataset):
 
 
 class FixMinMaxNormalizer:
-    
+
     """
         normalizes data through maximum and minimum expansion.
     """
@@ -584,7 +584,7 @@ class PushTDataset(torch.utils.data.Dataset):
     def getitem(self, index):
         images_path, actions_path, idxs = self.data[index]
         images_path = [os.path.join(images_path, f"{(idx):04d}.png") for idx in idxs]
-    
+
         with open(actions_path, "rb") as f:
             actions = np.load(f)
         action_list = []
@@ -616,8 +616,8 @@ class PushTDataset(torch.utils.data.Dataset):
         # imageio.mimwrite('output.mp4', rec_video, fps=3)
 
 
-        ret = {"video": video, 
-               "fps": 3, 
+        ret = {"video": video,
+               "fps": 3,
                "action": action,
                "num_frames": video.shape[1],
                "height": video.shape[2],
@@ -707,9 +707,9 @@ class RT1Dataset(torch.utils.data.Dataset):
             self.dataset_statistics = json.load(f)
         self.q01 = np.array(self.dataset_statistics['fractal20220817_data']['action']['q01'])
         self.q99 = np.array(self.dataset_statistics['fractal20220817_data']['action']['q99'])
-        
+
         tokenizer = AutoTokenizer.from_pretrained(
-            '/mnt/bn/zhufangqi-lq-c2ec0f30/zhufangqi/world-model/openvla/meta-llama/Llama-2-7b-hf', model_max_length=2048, token="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", padding_side="right"
+            '/mnt/bn/zhufangqi-lq-c2ec0f30/zhufangqi/world-model/openvla/meta-llama/Llama-2-7b-hf', model_max_length=2048, token=os.environ.get("HF_TOKEN"), padding_side="right"
         )
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
         # get dataset
@@ -746,7 +746,7 @@ class RT1Dataset(torch.utils.data.Dataset):
         # lang_path = os.path.join(self.data_path, f"lang/{episode_id}.txt")
         # with open(lang_path, "r") as f:
         #     lang = f.read()
-        
+
         actions_path = os.path.join(self.data_path, f"actions/{episode_id}.npy")
 
         with open(actions_path, "rb") as f:
@@ -755,7 +755,7 @@ class RT1Dataset(torch.utils.data.Dataset):
         gripper_actions_continuous = tf.convert_to_tensor(actions[:, -1])
         gripper_action_discretized = rel2abs_gripper_actions(gripper_actions_continuous)
         gripper_action_discretized = gripper_action_discretized.numpy()
-        
+
         action = actions[idxs[-1]-1]
         action[-1] = gripper_action_discretized[idxs[-1]-1]
 
@@ -787,8 +787,8 @@ class RT1Dataset(torch.utils.data.Dataset):
         # imageio.mimwrite('output.mp4', rec_video, fps=3)
 
 
-        ret = {"video": video, 
-               "fps": 3, 
+        ret = {"video": video,
+               "fps": 3,
                "action": action,
                "num_frames": video.shape[1],
                "height": video.shape[2],
@@ -1109,25 +1109,25 @@ class RealPushTDataset(Dataset):
                 # 为了取到一段连续的16个动作，需要保证索引 start_idx + num_frames 不越界
                 for start_idx in range(length - num_frames):
                     self.samples.append((file_idx, group_name, start_idx))
-    
+
         # agent_pos_normalizer = MinMaxNormalizer(np.array(replay_buffer['state']))
         # image_normalizer = ImageNormalizer()
         self.action_normalizer = MinMaxNormalizer(np.array(replay_buffer['action']))
-                
-                
+
+
     def __len__(self):
         return len(self.samples)
-    
+
     def __getitem__(self, idx):
         file_idx, group_name, start_idx = self.samples[idx]
         group = self.files[file_idx][group_name]
-        
+
         # 加载相机 RGB 图像数据（忽略深度图）
         rgb_dataset = group[f'video']
         # state_dataset = group[f'state']
         # 加载机器人动作数据
         action_dataset = group['action']
-        
+
         # 取两帧观测：起始帧和经过 num_frames 个动作之后的目标帧
         obs = rgb_dataset[start_idx: start_idx + self.num_frames]       # 起始观测帧
         obs = np.ascontiguousarray(obs)
@@ -1156,17 +1156,17 @@ class RealPushTDataset(Dataset):
         # agent_pos = self.normalizer['obs']['agent_pos'].normalize(agent_pos)
         action = actions.astype(np.float32)  # (T, 2)
         action = self.action_normalizer.normalize(action)
-        
+
         # 返回的结果为一个字典，包含两帧图像和对应的动作序列
-        
-        ret = {"video": video, 
-               "fps": 3, 
+
+        ret = {"video": video,
+               "fps": 3,
                "action": action,
                "num_frames": video.shape[1],
                "height": video.shape[2],
                "width": video.shape[3]}
         return ret
-    
+
     def __del__(self):
         # 当对象销毁时，关闭 HDF5 文件
         if hasattr(self, 'file'):

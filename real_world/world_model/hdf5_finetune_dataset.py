@@ -213,18 +213,24 @@ class RealWorldHDF5WindowDataset(Dataset):
             action_key=self.action_key,
         )
         windows = self._build_windows()
+        eligible = sorted({window.episode_idx for window in windows})
+        if not eligible:
+            raise RuntimeError("no trainable windows built from real-world HDF5 data")
         rng = random.Random(int(seed))
-        rng.shuffle(windows)
-
-        if len(windows) > 1 and val_ratio > 0:
-            val_count = max(1, int(round(len(windows) * float(val_ratio))))
+        rng.shuffle(eligible)
+        if val_ratio > 0:
+            if len(eligible) < 2:
+                raise ValueError("episode-disjoint validation requires at least two eligible episodes; use --val-ratio 0 to disable it")
+            val_count = min(len(eligible) - 1, max(1, int(round(len(eligible) * float(val_ratio)))))
         else:
+            if mode == "val":
+                raise ValueError("validation is disabled when val_ratio is zero")
             val_count = 0
-        val_windows = windows[:val_count]
-        train_windows = windows[val_count:] or windows
-        selected = val_windows if mode == "val" else train_windows
-        if not selected:
-            selected = windows
+        val_episodes = set(eligible[:val_count])
+        # Overlapping windows must never cross the train/validation boundary.
+        selected = [window for window in windows
+                    if (window.episode_idx in val_episodes) == (mode == "val")]
+        rng.shuffle(selected)
         if max_windows is not None and int(max_windows) > 0:
             selected = selected[: int(max_windows)]
         self.windows = selected
@@ -233,6 +239,7 @@ class RealWorldHDF5WindowDataset(Dataset):
 
         print(
             f"[real-hdf5-dataset] mode={mode} episodes={len(self.episodes)} "
+            f"split_episodes={len({w.episode_idx for w in self.windows})} "
             f"windows={len(self.windows)} total_windows={len(windows)}"
         )
 

@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass, field
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -20,14 +21,9 @@ _CTRL_WORLD_SAMPLE_JSON_DIR = str(
 class wm_args:
     ########################### training args ##############################
     # model paths
-    svd_model_path: str = (
-        "/mnt/afs/task3_2/L202500276_lwz/models/stable-video-diffusion-img2vid"  # ! todo: set to your local SVD backbone directory
-    )
-    clip_model_path: str = (
-        "/mnt/afs/task3_2/L202500276_lwz/models/clip-vit-base-patch32"  # ! todo: set to your local CLIP backbone directory
-    )
-    ckpt_path = "/mnt/afs/task3_2/L202500276_lwz/models/ctrl_world_ckpts/checkpoint-1.pt"  # ! todo: optional warm-start checkpoint for offline WM training
-    # ckpt_path: Optional[str] = None
+    svd_model_path: str = os.environ.get("MERL_SVD_MODEL_PATH", str(_REPO_ROOT / "models/stable-video-diffusion-img2vid"))
+    clip_model_path: str = os.environ.get("MERL_CLIP_MODEL_PATH", str(_REPO_ROOT / "models/clip-vit-base-patch32"))
+    ckpt_path: Optional[str] = os.environ.get("MERL_WM_CHECKPOINT")
     load_from_ckpt: bool = False
 
     # dataset parameters
@@ -36,9 +32,7 @@ class wm_args:
     dataset_root_path: str = "dataset_example"
     dataset_names: str = "droid_subset"
     dataset_meta_info_path: str = "dataset_meta_info"
-    libero_root: Optional[str] = (
-        "/mnt/afs/L202500276/benchmark/LIBERO"  # ! todo: set to your local LIBERO repository root for offline dataset regeneration scripts
-    )
+    libero_root: Optional[str] = os.environ.get("LIBERO_PRO_ROOT")
     dataset_sample_json_dir: str = (
         _CTRL_WORLD_SAMPLE_JSON_DIR  # ! repo-local default; override only if you store Ctrl-World sample-json elsewhere
     )

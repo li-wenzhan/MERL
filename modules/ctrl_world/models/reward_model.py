@@ -130,6 +130,7 @@ class VisionActionClassifier(nn.Module):
         self.num_classes = num_classes
         self.num_action_tokens = num_action_tokens
         self.action_dim = action_dim
+        self.freeze_vision = freeze_vision
 
         # Vision backbone (ResNet18 up to avgpool), supports in_channels != 3
         self.vision_feature_extractor = make_resnet18_backbone(
@@ -166,6 +167,13 @@ class VisionActionClassifier(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(latent_dim // 2, num_classes),
         )
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_vision:
+            # Frozen parameters alone do not freeze ResNet BatchNorm buffers.
+            self.vision_feature_extractor.eval()
+        return self
 
     def forward(self, images: torch.Tensor, actions: torch.Tensor):
         """

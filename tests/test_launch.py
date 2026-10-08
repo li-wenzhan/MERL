@@ -1,8 +1,9 @@
 import os
+import importlib.util
 from unittest.mock import patch
 import unittest
 
-from merl.launch import build_settings, hydra_args, parser, runtime_env
+from merl.launch import build_settings, compose_config, hydra_args, parser, runtime_env
 
 
 class LaunchTests(unittest.TestCase):
@@ -50,7 +51,29 @@ class LaunchTests(unittest.TestCase):
             self.assertEqual(env["TRANSFORMERS_OFFLINE"], "1")
             self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "GPU-abc,GPU-def")
             self.assertEqual(env["NCCL_SOCKET_IFNAME"], "eth0")
+            self.assertEqual(env["MERL_LIBERO_EGL_DEVICE_ID"], "auto")
             self.assertNotEqual(env.get("GLOO_SOCKET_IFNAME"), "bond0")
+
+    @unittest.skipUnless(importlib.util.find_spec("hydra"), "configuration composition requires hydra-core")
+    def test_actual_hydra_composition_and_single_gpu_contract(self):
+        for mode in ("MFRL", "MBRL", "STATIC_TRUST", "ONLINE_MBRL", "MERL"):
+            cfg, _ = build_settings(self.args(mode))
+            resolved = compose_config(hydra_args(cfg, []))
+            self.assertEqual(resolved["paper"]["grounded_trajectories"], 6)
+            self.assertEqual(resolved["trainer"]["n_gpus_per_node"], 3)
+            self.assertEqual(resolved["actor_rollout_ref"]["world_model"]["mixed_precision"], "bf16")
+            self.assertEqual(resolved["actor_rollout_ref"]["actor"]["clip_ratio_high"],
+                             resolved["actor_rollout_ref"]["actor"]["clip_ratio_low"])
+        cfg, _ = build_settings(self.args("MFRL", ("--actor-gpus", "1")))
+        with self.assertRaisesRegex(ValueError, "three actor GPUs"):
+            compose_config(hydra_args(cfg, []))
+        compose_config(hydra_args(cfg, ["actor_rollout_ref.actor.fsdp_config.model_dtype=bf16"]))
+        with self.assertRaisesRegex(ValueError, "symmetric"):
+            compose_config(hydra_args(cfg, ["actor_rollout_ref.actor.clip_ratio_high=.28"]))
+        for extra in (("--job", "evaluate", "--actor-gpus", "1"),
+                      ("--job", "collect", "--actor-gpus", "1", "--shared-wm-eval", "/data/fixed")):
+            cfg, _ = build_settings(self.args("MFRL", extra))
+            compose_config(hydra_args(cfg, []))
 
 
 if __name__ == "__main__":

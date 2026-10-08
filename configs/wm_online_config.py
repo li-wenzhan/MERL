@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -23,12 +24,12 @@ class wm_args:
     ########################### training args ##############################
     # model paths
     svd_model_path: str = (
-        "/mnt/afs/task3_2/L202500276_lwz/models/stable-video-diffusion-img2vid"  # ! todo: set to your local SVD backbone directory
+        os.environ.get("MERL_SVD_MODEL_PATH", str(_REPO_ROOT / "models" / "stable-video-diffusion-img2vid"))
     )
     clip_model_path: str = (
-        "/mnt/afs/task3_2/L202500276_lwz/models/clip-vit-base-patch32"  # ! todo: set to your local CLIP backbone directory
+        os.environ.get("MERL_CLIP_MODEL_PATH", str(_REPO_ROOT / "models" / "clip-vit-base-patch32"))
     )
-    ckpt_path = "/mnt/afs/task3_2/L202500276_lwz/models/ctrl_world_ckpts/checkpoint-10000.pt"  # ! todo: optional warm-start WM checkpoint; ignored when load_from_ckpt=False
+    ckpt_path: Optional[str] = os.environ.get("MERL_WM_CHECKPOINT")
     # ckpt_path: Optional[str] = (
     #     "/path/to/MeRL/world_model/global_step_100/world_model.pth"
     # )

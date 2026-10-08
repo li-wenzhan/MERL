@@ -4132,7 +4132,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
 
         self.module.train()
 
-        return self._prepare_output_batch_evolving(
+        output = self._prepare_output_batch_evolving(
             prompts,
             vla_history,
             task_records,
@@ -4141,6 +4141,24 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
             batch_size,
             max_steps,
         )
+        if meta_info.get("paper_grounded_dir"):
+            from merl.paper import save_grounded_trajectory
+            import hashlib
+            paths = []
+            for index, (record, video) in enumerate(zip(task_records, video_records)):
+                if record.get("placeholder_reason") or record.get("is_dummy"):
+                    raise RuntimeError(f"Incomplete camera-ready grounded trajectory: {record}")
+                if len(video["executed_actions"]) != int(record["finish_step"]):
+                    raise RuntimeError("Executed-action count disagrees with environment transition count")
+                uid = str(output.non_tensor_batch["uid"][index])
+                name = hashlib.sha256(f"{uid}/{index}".encode()).hexdigest()[:16]
+                path = Path(meta_info["paper_grounded_dir"]) / f"stage_{global_steps:06d}" / f"{name}.npz"
+                paths.append(save_grounded_trajectory(
+                    path, observations=video["env_images"], executed_actions=video["executed_actions"],
+                    instruction=task_descriptions[index], success=record["complete"],
+                    task_id=int(task_id[index].item()), trial_id=int(trial_id[index].item()), stage=global_steps))
+            output.non_tensor_batch["paper_trajectory_path"] = np.asarray(paths, dtype=object)
+        return output
 
     def _preprocess_img(self, img: np.ndarray) -> torch.Tensor:
         img: torch.Tensor = (

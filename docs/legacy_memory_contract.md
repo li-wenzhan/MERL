@@ -1,4 +1,8 @@
-# MERL Memory Fix
+# Legacy trainer memory contract
+
+These replay-pool settings apply to `--protocol legacy`. The default camera-ready
+driver uses chunk batches and complete-stage snapshots; see
+[camera-ready protocol](camera_ready_protocol.md).
 
 ## New Dependencies
 

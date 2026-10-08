@@ -64,11 +64,28 @@ class StoredCalibrationTests(unittest.TestCase):
             simulator(torch.tensor([0.]), torch.ones(1, 1), "move")
         torch.testing.assert_close(self.trajectory.observations, torch.arange(7.)[:, None])
 
-    def test_requires_explicit_post_action_targets(self):
+    def test_requires_explicit_transition_indexed_targets(self):
         with self.assertRaises(ValueError):
             self.build(replace(self.trajectory, observations=torch.zeros(6, 1)))
         with self.assertRaises(ValueError):
             self.build(replace(self.trajectory, target_proxy=torch.zeros(7)))
+
+    def test_recursive_calibration_uses_predicted_context_and_withholds_futures(self):
+        def biased_step(context, actions):
+            self.seen.append(context.copy())
+            return context.anchor + actions.cumsum(0) + 10, torch.ones(len(actions)) * .5
+        def replay(trajectory):
+            return build_calibration_batch([trajectory], [(0, 2)], history_size=2, chunk_size=2,
+                                           max_depth=3, stage_context=torch.tensor([1.]),
+                                           simulator_revision="sim-1", step=biased_step, encode=lambda x: x)
+        first = replay(self.trajectory)
+        changed = self.trajectory.observations.clone()
+        changed[3:] += 500
+        second = replay(replace(self.trajectory, observations=changed))
+        torch.testing.assert_close(first.features.matrix(), second.features.matrix())
+        self.assertEqual(first.features.depth.tolist(), [1, 2])
+        torch.testing.assert_close(self.seen[1].anchor, torch.tensor([14.]))
+        self.assertGreater(float(second.residuals()[1, 0]), float(first.residuals()[1, 0]))
 
 
 if __name__ == "__main__":

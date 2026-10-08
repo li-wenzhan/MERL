@@ -7,8 +7,6 @@
 # 4) Then install the remaining packages from this file.
 
 # Core training / distributed runtime
-colossalai
-deepspeed
 ray[default]
 hydra-core
 omegaconf

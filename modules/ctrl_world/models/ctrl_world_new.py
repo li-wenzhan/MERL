@@ -341,7 +341,7 @@ class CtrlWorld(nn.Module):
         device="cpu",
     ):
         """
-        返回形状 (num_future,) 的权重张量，归一化（可选）使得 mean=1
+        Return per-future-frame weights, optionally normalized to mean one.
         """
         if num_future == 0:
             return torch.empty(0, device=device)
@@ -355,7 +355,7 @@ class CtrlWorld(nn.Module):
         else:
             w = torch.ones_like(t)
         if normalize:
-            w = w * (num_future / w.sum())  # 归一化到 mean = 1
+            w = w * (num_future / w.sum())  # Normalize to mean one.
         return w
 
     def forward(self, batch):
@@ -376,13 +376,15 @@ class CtrlWorld(nn.Module):
             raise NotImplementedError("no obs img or latent provided!")
         texts = batch["text"]  # (B)
         action = batch["action"]  # (B, f, 7)
-        reward = batch["reward"].to(dtype=torch.int64)  # (B, f)
+        reward = batch["reward"]  # Soft success-to-go in the camera-ready path.
 
         num_history = self.args.num_history
         latents = latents.to(device)  # [B, num_history + num_future, 4, 32, 32]
 
         # current img as condition image to stack at channel wise, add random noise to current image, noise strength 0.0~0.2
-        current_img = latents[:, num_history : (num_history + 1)]  # (B, 1, 4, 32, 32)
+        # The last history frame is the anchor. The first future frame is a
+        # training target and MUST NOT enter conditioning (ground-truth leak).
+        current_img = latents[:, num_history - 1 : num_history]
         bsz, num_frames = latents.shape[:2]  # (B, T)
         current_img = current_img[:, 0]  # (B, 4, 32, 32)
 
@@ -410,13 +412,21 @@ class CtrlWorld(nn.Module):
         )  # (B, T, 1024)
 
         #! calculate reward
-        img_ = einops.rearrange(img, "b t c h w -> (b t) c h w")
+        proxy_img = batch.get("proxy_img", img)
+        img_ = einops.rearrange(proxy_img, "b t c h w -> (b t) c h w")
         action_hidden_ = einops.rearrange(action_hidden, "b t c -> (b t) c")
         pred_rew_logit, pred_rew_prob = self.reward_classifier(
             img_, action_hidden_
         )  # [BT, 2]
         reward_ = einops.rearrange(reward, "b t -> (b t)")
-        loss_reward = F.cross_entropy(pred_rew_logit, reward_)
+        if "proxy_img" in batch:
+            from merl.proxy import soft_progress_loss
+            proxy_mask = batch["valid_steps"].clone().bool()
+            proxy_mask[:, :num_history] = False
+            loss_reward = soft_progress_loss(pred_rew_logit.reshape(*reward.shape, 2),
+                                             reward, proxy_mask)
+        else:
+            loss_reward = F.cross_entropy(pred_rew_logit, reward_.long())
 
         # for classifier-free guidance, with 5% probability, set action_hidden to 0
         uncond_hidden_states = torch.zeros_like(action_hidden)
@@ -452,7 +462,7 @@ class CtrlWorld(nn.Module):
         # svd stack a img at channel wise
         input_latents = torch.cat(
             [input_latents, condition_latent / self.vae.config.scaling_factor], dim=2
-        )  # 输入特征 = 原始特征加噪结果 || 编码后的条件特征
+        )  # Concatenate noisy latents and encoded conditioning.
         motion_bucket_id = self.args.motion_bucket_id
         fps = self.args.fps
         added_time_ids = self.pipeline._get_add_time_ids(
@@ -473,7 +483,7 @@ class CtrlWorld(nn.Module):
             encoder_hidden_states=action_hidden,
             added_time_ids=added_time_ids,
             frame_level_cond=self.args.frame_level_cond,
-        ).sample  # 预测噪声
+        ).sample  # Predicted noise.
         predict_x0 = c_out * model_pred + c_skip * noisy_latents
 
         # only calculate loss on future frames
@@ -481,16 +491,21 @@ class CtrlWorld(nn.Module):
         #     (predict_x0[:, num_history:] - latents[:, num_history:]) ** 2 * loss_weight
         # ).mean()
         #! to solve seam jitter
-        # 假设 predict_x0 和 latents 形状 (B, T_total, C, H, W)
+        # predict_x0 and latents have shape (B, T_total, C, H, W).
         num_future = predict_x0.shape[1] - num_history
         w = self.compute_time_weights(
             num_future, scheme="exp", beta=3.0, device=predict_x0.device
         )  # (T_f,)
-        time_weight = w.view(1, -1, 1, 1, 1)  # expand 到帧维（B, T_f, 1, 1, 1）
+        time_weight = w.view(1, -1, 1, 1, 1)  # Broadcast over future frames.
         loss_noise = (predict_x0[:, num_history:] - latents[:, num_history:]) ** 2
         loss_noise = loss_noise * loss_weight
         loss_noise = loss_noise * time_weight
-        loss_noise = loss_noise.mean()
+        if "valid_steps" in batch:
+            valid_future = batch["valid_steps"][:, num_history:].bool()
+            loss_noise = loss_noise.mean(dim=(2, 3, 4))
+            loss_noise = loss_noise[valid_future].mean()
+        else:
+            loss_noise = loss_noise.mean()
 
         loss_dict = {
             "loss_noise": loss_noise,

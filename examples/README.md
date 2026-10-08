@@ -1,7 +1,7 @@
 # Minimal entrypoints
 
-`run_libero.sh` forwards to `python -m merl.launch`: one entry for MERL, MBRL and
-MFRL, with `--job train|evaluate|collect`. Devices and assets are arguments, not
+`run_libero.sh` forwards to `python -m merl.launch`: one entry for MERL and its
+four component controls, with `--job train|evaluate|collect`. Devices and assets are arguments, not
 separate scripts. Internal helpers now live in `scripts/`.
 
 `run_presentation.sh` runs short training and complete real-environment evaluation
@@ -26,12 +26,14 @@ root separate from training data and record checkpoint, task/trial IDs and revis
 
 ```bash
 bash examples/run_libero.sh --mode MERL --job evaluate \
-  --sft-checkpoint /models/exported-merl-actor \
+  --sft-checkpoint /models/openvla-oft \
+  --actor-checkpoint checkpoints/MERL/RUN/actor/global_step_100 \
   --experiment merl_eval_001 --actor-gpus 3 --trials 6
 ```
 
-Supply an exported Hugging Face/OpenVLA checkpoint including action statistics,
-not raw rank-local FSDP shards. Evaluation disables WM rollout and uses environment
+Supply base SFT assets including action statistics and a complete FSDP checkpoint
+directory with its original rank count. For a full HF export, omit
+`--actor-checkpoint` and supply that export as the SFT asset. Evaluation uses environment
 success. Match evaluation configuration, initial states, sampling and horizons
 across methods; retain failures and timeouts.
 
@@ -45,8 +47,8 @@ python scripts/compare_mode_results.py \
 
 Inspect `val/test_score/all` for environment success; training proxy reward is not
 a success label. With fixed WM evaluation enabled, inspect `wm/eval/*` plus
-missing-data/error diagnostics. Legacy profiles differ in optimizer, temperature
-and confidence guards; raw scores are not a controlled algorithm comparison.
+missing-data/error diagnostics. Camera-ready controls share optimizer and data
+contracts. Legacy profiles differ and require separate labeling.
 See [the runbook](../docs/h100_runbook.md).
 
 The two `real_world_wm_predict*.sh` scripts handle separate video/HDF5 inputs.

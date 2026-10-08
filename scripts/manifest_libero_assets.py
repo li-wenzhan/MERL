@@ -5,8 +5,8 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
-import subprocess
 import sys
 
 import numpy as np
@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--expected-tasks", type=int, required=True)
     parser.add_argument("--min-trials", type=int, default=1)
     parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--source-root", type=Path, required=True, help="LIBERO-PRO Git checkout")
+    parser.add_argument("--source-root", type=Path, required=True, help="LIBERO-PRO checkout or asset directory")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.expected_tasks < 1 or args.min_trials < 1:
@@ -49,8 +49,8 @@ def main():
     manifest = {"created_utc": datetime.now(timezone.utc).isoformat(),
                 "bddl_dir": str(args.bddl_dir.resolve()), "init_dir": str(args.init_dir.resolve()),
                 "config": str(args.config.resolve()), "config_sha256": digest(args.config),
-                "source_revision": subprocess.check_output(
-                    ["git", "-C", str(args.source_root), "rev-parse", "HEAD"], text=True).strip(),
+                "source_root": str(args.source_root.resolve()),
+                "source_revision_label": os.environ.get("LIBERO_PRO_REVISION"),
                 "generation_seed": "not_recorded_by_external_generator",
                 "task_count": len(records), "tasks": records}
     args.output.parent.mkdir(parents=True, exist_ok=True)

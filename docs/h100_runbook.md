@@ -6,28 +6,29 @@ GPUs. CCI GPU inventory is not an ACP resource-allocation problem.
 
 ## Unified launcher
 
-`python -m merl.launch` composes Hydra directly from `configs/launch_profiles.json`.
-Duplicated 1/3/4-GPU launch scripts were removed. Algorithm settings were extracted
-from the former four-GPU scripts at revision `8de7bb6`; the profiles retain their
-legacy differences (including learning rate, temperature and confidence guards).
-They do **not** activate recursive no-oracle imagination or establish matched
-paper budgets. See [implementation audit](implementation_audit.md).
+`python -m merl.launch` defaults to `--protocol camera-ready`. Shared infrastructure
+is composed with explicit paper mechanisms from `configs/camera_ready.json`.
+Historical settings in `configs/launch_profiles.json` remain available with
+`--protocol legacy`; their previous confidence/anchor guards do not define the
+new default. See [camera-ready protocol](camera_ready_protocol.md).
 
 MERL/MBRL reserve three actor GPUs plus one WM trainer GPU by default. MFRL uses
 three actor GPUs, retaining the same actor parallelism; the fourth is unused.
-WM inference copies may still occupy actor GPUs. `--actor-gpus` scales per-rank
-batch settings and is useful for CCI real-only checks.
+The camera-ready simulator is a single shared worker; actors do not load local
+WM copies. `--actor-gpus 1` supports CCI evaluation/collection. Full-parameter
+FP32 Adam training requires the three-actor allocation. A BF16 single-actor
+engineering check changes optimizer precision and cannot certify that allocation.
 
 ```bash
 python -m merl.launch --mode MERL \
   --sft-checkpoint /models/openvla-oft --wm-checkpoint /models/ctrl-world.pt \
-  --experiment merl_smoke_001 --check
+  --experiment merl_assets_001 --check
 ```
 
 `--check` verifies assets and resolved config without Ray/GPU allocation.
 `--dry-run` only prints the command. `--render-check` additionally resets a real
-environment. For ACP execution replace `--check` with `--smoke`, then remove
-`--smoke` only after verifying a real update. Smoke means task 0, 16 environment
+environment. For ACP execution remove `--check` and set the intended `--stages`.
+The optional engineering `--smoke` means task 0, 16 environment
 steps, one outer update, one WM inner step and two diffusion inference steps;
 Accuracy filtering is disabled in smoke runs so all-failed short rollouts can
 reach the update path; zero GRPO signal is possible. This tests plumbing, not
@@ -36,7 +37,8 @@ success or simulator fidelity.
 Select `--job evaluate` for real-only evaluation of an exported actor or
 `--job collect` with MFRL for fixed WM evaluation data. The default `--wm-eval off`
 allows pipeline bring-up without fixed shards, and produces no fixed WM metrics.
-Use `--wm-eval fixed --shared-wm-eval /data/wm_eval` after collecting both splits.
+The legacy fixed-shard evaluator requires `--protocol legacy --wm-eval fixed`.
+For camera-ready runs use the separate held-out `merl.wm_visual_compare` command.
 
 Each fresh run writes its resolved config, command, selected runtime/config file
 hashes, package versions, GPU information and final status into
@@ -48,7 +50,31 @@ to offline mode. These records are not a full RNG/optimizer resume checkpoint.
 Source SFT weights are symlinked into run-specific actor assets, never overwritten.
 Existing run directories and nonempty collection splits are rejected.
 
-## Private ACP job payload
+## ACP submission command
+
+After asset preparation, qualify the full camera-ready lifecycle on a small task
+panel with the original per-stage interaction allowance. This uses six trajectories,
+the 512-action cap and the configured 50-step simulator update; it is not a
+short-horizon smoke test or a convergence experiment.
+
+```bash
+bash scripts/run_logged.sh python -m merl.launch \
+  --mode MERL --stages 1 --experiment merl_release_check \
+  --sft-checkpoint "$SFT_CHECKPOINT" --wm-checkpoint "$WM_CHECKPOINT" \
+  --output-root tmp_files/acp_release_runs --checkpoint-keep 1 \
+  -- actor_rollout_ref.rollout.allowed_task_ids=[0] data.num_trials_per_task=3
+```
+
+Reserve approximately 30–60 minutes initially on four H100s, excluding queueing.
+This is a planning range, not a measured four-GPU time. Update it from the first
+completed run's phase timings. The single-H100 actor engineering check took
+about 14 minutes including cold startup, collection, update and checkpointing;
+its precision, 32-action cap and rank layout differ from this command.
+
+The authors' local deployment payload is `tmp_files/acp_camera_ready.sh`, outside
+Git. Public users can submit the command above after exporting asset paths.
+
+## Historical private ACP payload and bring-up notes
 
 The deployment script is `tmp_files/acp_merl.sh` (intentionally ignored by Git).
 It selects the supplied shared filesystem repo, environment and model paths, then
@@ -130,12 +156,13 @@ during manifest creation. Asset checks passed; training had not started. No
 ## Validation gates
 
 1. CPU contracts: `python -m unittest discover -s tests -v`.
-2. `PYTHONPATH=$PWD python scripts/verify_merl_memory_contract.py`.
+2. Compose all maintained modes; use `scripts/verify_merl_memory_contract.py`
+   only when changing the legacy replay path.
 3. Asset/config checks with `--check`; strict simulator load with
    `scripts/preflight_world_model_backbone.py --config configs/wm_online_config.py
    --checkpoint /models/ctrl-world.pt --load-model`.
 4. Environment reset/step and finite SFT actions on its saved observation.
-5. Real-only closed-loop CCI smoke, then ACP actor/WM worker initialization.
+5. Actual-model CCI component checks, then ACP actor/WM worker initialization.
 6. One ACP update: finite loss/gradients, valid token masks, actual transition
    counts and checkpoint saving. A process starting is not an update passing.
 7. Common evaluation panel, fixed WM dataset and larger experiments.
@@ -265,7 +292,8 @@ python scripts/manifest_libero_assets.py \
 ```
 
 The manifest records per-file hashes, task/state counts, unique state counts,
-configuration hash and LIBERO-PRO Git revision. It rejects missing or extra tasks,
+configuration hash and an optional user-supplied LIBERO-PRO revision label. It
+performs no Git checks and rejects missing or extra tasks,
 invalid state arrays and insufficient trials. Keep the manifest with all comparison
 runs and verify hashes before reuse. A fingerprint records identity; it does not
 make the external files immutable or prove the perturbation is a meaningful OOD shift.
@@ -286,7 +314,11 @@ initial states each. `scripts/manifest_libero_assets.py` checked all 500 states
 and recorded file hashes in
 `outputs/preflight_20260917/pipeline/libero10_env_panel.json` on CCI.
 
-## Closed-loop evidence and remaining gates
+## Historical closed-loop evidence and remaining gates
+
+The following records predate the camera-ready entrypoint. They are retained for
+traceability and do not certify the new default. Current release checks are in
+[the implementation audit](implementation_audit.md).
 
 The ACP payload was also exercised on CCI with one actor:
 

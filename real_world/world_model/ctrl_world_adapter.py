@@ -90,7 +90,7 @@ def _encode_img_to_latent(model, img: torch.Tensor, device: torch.device) -> tor
     model = _get_inner_module(model)
     vae = _get_inner_module(model.vae)
     with torch.no_grad():
-        latent = vae.encode(img.to(device)).latent_dist.sample()
+        latent = vae.encode(img.to(device)).latent_dist.mean
         latent = latent.mul_(vae.config.scaling_factor)
     return latent
 
@@ -206,8 +206,13 @@ class CtrlWorldRealAdapter:
             )
             future_action_latent = action_latent[:, -num_future:, :]
             reward_actions = future_action_latent.reshape(-1, future_action_latent.shape[-1])
+            # Q(o_t, u_t) sees the anchor before the first command and the
+            # preceding prediction for every following command. Training uses
+            # the same [-1, 1] image range.
+            proxy_images = torch.cat((current_image.to(device=self.device, dtype=self.dtype),
+                                      pred_tensor[:-1] * 2 - 1), dim=0)
             pred_scores = _get_inner_module(self.model).reward_classifier.predict_score(
-                pred_tensor,
+                proxy_images,
                 reward_actions.to(device=self.device, dtype=self.dtype),
             )
             pred_scores_np = pred_scores.detach().to(torch.float32).cpu().numpy()

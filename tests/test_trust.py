@@ -48,12 +48,14 @@ class TrustTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "different anchors"):
             wrong.residuals()
 
-    def test_heldout_and_recursive_future_excluded(self):
+    def test_heldout_excluded_and_stored_recursive_labels_allowed(self):
         with self.assertRaisesRegex(ValueError, "held-out"):
             self.predictor.fit(dataclasses.replace(self.batch, split="evaluation"), stage=1)
         recursive = dataclasses.replace(self.batch.features, depth=torch.full((24,), 2))
-        with self.assertRaisesRegex(ValueError, "depth-one"):
-            self.predictor.fit(dataclasses.replace(self.batch, features=recursive), stage=1)
+        stats = self.predictor.fit(dataclasses.replace(self.batch, features=recursive), stage=1)
+        self.assertEqual(stats["windows"], 24)
+        with self.assertRaisesRegex(ValueError, "held-out"):
+            self.predictor.fit(dataclasses.replace(self.batch, features=recursive, split="evaluation"), stage=1)
 
     def test_mask_excludes_padding(self):
         mask = self.batch.features.valid_steps.clone()

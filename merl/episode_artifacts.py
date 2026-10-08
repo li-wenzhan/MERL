@@ -15,15 +15,17 @@ def save_episode(root, frames, metadata, executed_actions=None):
     folder.mkdir(parents=True, exist_ok=False)
     record = dict(metadata, frame_count=len(frames), video=None, keyframes=[])
     if executed_actions is not None and metadata.get("valid", False):
+        imagined = metadata.get("observation_source") == "world_model"
         actions = np.asarray(executed_actions, dtype=np.float32)
         observations = np.asarray(frames)
         if (actions.ndim != 2 or actions.shape[1] != 7 or not np.isfinite(actions).all()
                 or len(observations) != len(actions) + 1
-                or len(actions) != metadata["environment_steps"]):
+                or len(actions) != metadata.get("imagined_steps" if imagined else "environment_steps")):
             raise ValueError("WM reference requires T executed actions and T+1 aligned observations")
         np.savez_compressed(folder / "trajectory.npz", observations=observations, actions=actions)
         record.update(trajectory="trajectory.npz", action_convention="libero_env_executed",
-                      alignment="observations[t+1] follows actions[t]", split="evaluation")
+                      alignment="observations[t+1] follows actions[t]",
+                      split="imagination" if imagined else "evaluation")
     if frames:
         images = [np.asarray(frame) for frame in frames]
         if any(frame.dtype != np.uint8 or frame.ndim != 3 or frame.shape[-1] != 3

@@ -3,7 +3,7 @@
 # export http_proxy=http://bj-rd-proxy.byted.org:3128
 # export https_proxy=http://bj-rd-proxy.byted.org:3128
 
-export WANDB_API_KEY=1ffba3f6afe0d59ce6267833cd36a695f3719b25
+# Set WANDB_API_KEY in the calling environment when tracking is enabled.
 
 # sudo apt-get install ffmpeg libsm6 libxext6 -y
 

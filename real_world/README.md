@@ -38,6 +38,17 @@ action
 For bimanual 14D actions, the default `ACTION_SLICE=right` selects `action[:, 7:14]`.
 The reward target is synthetic because real data has no reward: each training window has
 reward shape `[T]`, with the last frame set to `1` and all earlier frames set to `0`.
+This auxiliary target is not the camera-ready grounded success-to-go target and
+does not establish task success. These tools do not implement the paper's complete
+fixed-data physical-robot policy adaptation experiment.
+
+Training and validation split by complete eligible episodes. Overlapping windows
+from one episode never enter both splits. Validation requires at least two
+eligible episodes; set `VAL_RATIO=0` to train without validation. Empty held-out
+splits are never replaced with training data.
+
+The auxiliary trainer keeps trainable parameters and Adam storage in FP32,
+uses math SDPA for optimization, and aborts on non-finite losses/gradients.
 
 Run a real-data fine-tune:
 

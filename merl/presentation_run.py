@@ -14,8 +14,13 @@ from merl.launch import ROOT, digest
 from merl.modes import MODES
 
 
-def training_overrides(steps, seconds):
+def training_overrides(steps, seconds, protocol="camera-ready"):
     # Explicit pilot settings shared across modes; not paper-reproduction settings.
+    if protocol == "camera-ready":
+        return [f"trainer.max_training_seconds={seconds}", "trainer.save_freq=1",
+                "trainer.paper_checkpoint_keep=1",
+                "trainer.test_freq=1000000", "trainer.final_val_after_train=true",
+                "paper.simulator_steps=2", "actor_rollout_ref.world_model.num_inference_steps=8"]
     return [f"trainer.total_training_steps={steps}", f"trainer.total_epochs={steps}",
             f"trainer.max_training_seconds={seconds}", "trainer.save_freq=1",
             "trainer.test_freq=1000000", "trainer.final_val_after_train=true",
@@ -39,8 +44,8 @@ def training_overrides(steps, seconds):
 
 
 def protocol_for(config, task_ids, trials, horizon, eval_offset=10):
-    import yaml
-    settings = yaml.safe_load(config.read_text())
+    from verl.utils.libero_path import load_libero_pro_config
+    settings = load_libero_pro_config(str(config))
     active = [tag for key, tag in settings["perturbation_mapping"].items() if settings.get(key)]
     if active not in ([], ["env"]):
         raise ValueError("The quick comparison supports the existing original/environment-shift panel only")
@@ -65,6 +70,10 @@ def main():
     p.add_argument("--modes", nargs="+", choices=MODES, help="Explicit sequential subset; use instead of --mode")
     p.add_argument("--continue-on-error", action="store_true", help="Attempt remaining modes after a failure")
     p.add_argument("--job", choices=("train", "evaluate"), default="train")
+    p.add_argument("--protocol", choices=("camera-ready", "legacy"), default="camera-ready")
+    p.add_argument("--paper-config", type=Path, default=ROOT / "configs/camera_ready.json")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--actor-checkpoint", type=Path, help="Sharded camera-ready actor to evaluate")
     p.add_argument("--label", help="Evaluation label, e.g. SFT; never changes the policy")
     p.add_argument("--sft-checkpoint", type=Path, required=True)
     p.add_argument("--wm-checkpoint", type=Path)
@@ -84,6 +93,8 @@ def main():
         p.error("Evaluate one supplied checkpoint at a time; use --mode MFRL --label SFT for the initial policy")
     if args.job == "train" and args.label:
         p.error("Training labels are fixed to the selected modes")
+    if args.actor_checkpoint and args.job != "evaluate":
+        p.error("--actor-checkpoint is for evaluation")
     if (not args.tasks or len(set(args.tasks)) != len(args.tasks) or any(t < 0 or t > 9 for t in args.tasks)
             or min(args.trials, args.steps, args.training_minutes, args.actor_gpus) <= 0):
         p.error("Provide unique task IDs in 0..9 and positive budgets")
@@ -114,13 +125,17 @@ def main():
                      f"actor_rollout_ref.rollout.presentation_protocol={json.dumps(protocol['id'])}",
                      f"actor_rollout_ref.rollout.presentation_label={json.dumps(label)}"]
         if args.job == "train":
-            overrides += training_overrides(args.steps, args.training_minutes * 60)
-            if mode == "ONLINE_MBRL":
+            overrides += training_overrides(args.steps, args.training_minutes * 60, args.protocol)
+            if mode == "ONLINE_MBRL" and args.protocol == "legacy":
                 overrides += ["actor_rollout_ref.world_model.wm_warmup_steps=0"]
         command = [sys.executable, "-u", "-m", "merl.launch", "--mode", mode, "--job", args.job,
                    "--experiment", experiment, "--sft-checkpoint", str(args.sft_checkpoint.resolve()),
                    "--eval-config", str(args.eval_config.resolve()), "--output-root", str(root / "runs"),
-                   "--actor-gpus", str(args.actor_gpus), "--trials", str(args.trials)]
+                   "--actor-gpus", str(args.actor_gpus), "--trials", str(args.trials),
+                   "--protocol", args.protocol, "--stages", str(args.steps), "--seed", str(args.seed),
+                   "--paper-config", str(args.paper_config.resolve())]
+        if args.actor_checkpoint:
+            command += ["--actor-checkpoint", str(args.actor_checkpoint.resolve())]
         if args.wm_checkpoint and mode != "MFRL" and args.job == "train":
             command += ["--wm-checkpoint", str(args.wm_checkpoint.resolve())]
         command += ["--", *overrides]
@@ -129,7 +144,8 @@ def main():
                     experiment_dir=str(root / "runs" / mode / experiment),
                     source_hashes={str(path.relative_to(ROOT)): digest(path) for path in
                                    (ROOT / "merl/presentation_run.py", ROOT / "merl/presentation_report.py")},
-                    caveat="Short-budget legacy implementation pilot; no guarantee of method ranking or paper reproduction.")
+                    training_protocol=args.protocol,
+                    caveat="Short-budget exploratory run; no guarantee of method ranking or paper reproduction.")
         info_path = folder / "run_info.json"
         info_path.write_text(json.dumps(info, indent=2) + "\n")
         started = time.monotonic()

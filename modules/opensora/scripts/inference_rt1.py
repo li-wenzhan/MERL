@@ -159,18 +159,18 @@ def main():
         dataset_statistics = json.load(f)
     q01 = np.array(dataset_statistics['fractal20220817_data']['action']['q01'])
     q99 = np.array(dataset_statistics['fractal20220817_data']['action']['q99'])
-    
+
     tokenizer = AutoTokenizer.from_pretrained(
-        '/mnt/bn/zhufangqi-lq-c2ec0f30/zhufangqi/world-model/openvla/meta-llama/Llama-2-7b-hf', model_max_length=2048, token="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", padding_side="right"
+        '/mnt/bn/zhufangqi-lq-c2ec0f30/zhufangqi/world-model/openvla/meta-llama/Llama-2-7b-hf', model_max_length=2048, token=os.environ.get("HF_TOKEN"), padding_side="right"
     )
     tokenizer.add_special_tokens({"pad_token": "<PAD>"})
     # get dataset
     action_tokenizer = ActionTokenizer(tokenizer)
-    
+
     for episode_id in range(100):
         episode_id = 0
         image_path = os.path.join(cfg.data_path, f"images/{episode_id:06d}/000.png")
-        actions = np.load(os.path.join(cfg.data_path, f"openvla_actions/{episode_id:06d}.npy")) 
+        actions = np.load(os.path.join(cfg.data_path, f"openvla_actions/{episode_id:06d}.npy"))
 
         actions = actions[:-1]
 
@@ -192,14 +192,14 @@ def main():
                 transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
             ]
         )
-    
+
         processed_image = transform(image)  # 应用 Transform
 
-        
+
         processed_image = processed_image.unsqueeze(1).unsqueeze(0).to(device).to(dtype) #  CTHW
 
         x = vae.encode(processed_image)
-            
+
         for _ in range(condition_frame_length):
             image_queue.append(x)
 

@@ -1040,7 +1040,7 @@ def main_task(config):
         raise NotImplementedError
 
     train_mode = str(getattr(config.trainer, "train_mode", "MERL")).upper()
-    if train_mode not in ("MBRL", "MFRL", "MERL", "ONLINE_MBRL"):
+    if train_mode not in ("MBRL", "MFRL", "MERL", "ONLINE_MBRL", "STATIC_TRUST"):
         print(f"[main_ppo] Unknown train_mode='{train_mode}', falling back to 'MERL'")
         train_mode = "MERL"
     config.trainer.train_mode = train_mode
@@ -1095,7 +1095,7 @@ def main_task(config):
                 )
             wm_cfg.enable = False
             wm_cfg.fine_tune = False
-        elif train_mode == "MBRL":
+        elif train_mode in ("MBRL", "STATIC_TRUST"):
             if not bool(getattr(wm_cfg, "enable", False)):
                 print(
                     "[main_ppo] MBRL mode detected; enabling world model worker for imagined rollouts."
@@ -1112,7 +1112,7 @@ def main_task(config):
 
     from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
 
-    if config.actor_rollout_ref.world_model.enable:
+    if config.actor_rollout_ref.world_model.enable or config.trainer.get("protocol") == "camera-ready":
         print("Using World Model Actor Rollout Ref Worker.")
         from verl.workers.fsdp_workers import RobWMActorRolloutRefWorker
 
@@ -1193,7 +1193,13 @@ def main_task(config):
     finally:
         faulthandler.cancel_dump_traceback_later()
     print("[startup] all workers initialized; entering training/evaluation", flush=True)
-    if train_mode == "MFRL" or policy_evaluation:
+    if config.trainer.get("paper_actor_checkpoint"):
+        from merl.paper_trainer import _require_workers
+        _require_workers(trainer.actor_rollout_wg.load_checkpoint(config.trainer.paper_actor_checkpoint), "loaded")
+    if config.trainer.get("protocol") == "camera-ready" and not policy_evaluation and not config.trainer.get("rollout_before_train", False):
+        from merl.paper_trainer import fit
+        fit(trainer)
+    elif train_mode == "MFRL" or policy_evaluation:
         trainer.fit()
     else:
         trainer.fit_wm_v5()

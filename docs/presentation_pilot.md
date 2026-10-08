@@ -4,9 +4,10 @@ Run the three existing modes sequentially on one four-H100 node. This workflow
 produces actual checkpoints and real-environment videos; it does not synthesize
 successes or select trials based on outcomes. The protocol is a small exploratory
 comparison, not a paper reproduction or proof that MERL outperforms a baseline.
-The production WM path still has the discrepancies in
-[the implementation audit](implementation_audit.md), including grounded mirror
-rollouts and the pending no-oracle integration.
+The default uses the camera-ready lifecycle, including recursive predicted
+policy observations and integrated no-oracle trust. It shortens simulator
+updates to two per stage and diffusion inference to eight steps for exploration.
+Use `--protocol legacy` only to inspect the former mirror behavior.
 
 ## Run
 
@@ -40,16 +41,18 @@ Three actor GPUs are used for every training mode. WM modes reserve the fourth
 GPU for the WM trainer; MFRL leaves it unused. CCI single-GPU evaluation is
 supported via `--mode MFRL --job evaluate --label SFT --actor-gpus 1`.
 Evaluation uses greedy real-environment actions and the full 512-step limit.
-Training uses 384 steps and two samples per prompt. The pilot shares actor LR,
-clip ranges, temperature and minibatch sizes across modes; legacy mode-specific
-WM/anchor/KL guards remain in effect and are recorded in resolved configurations.
-WM diffusion is shortened to eight steps and MERL warmup to one outer update.
+Training uses six trajectories capped at 512 steps. The pilot shares actor LR,
+clip ranges, temperature and independent branch chunk counts across modes.
+WM diffusion is shortened to eight steps; simulator updates precede imagination
+without a legacy warmup or successful-anchor gate.
 These are pilot settings, not tuned or reproduced paper settings.
-The pilot explicitly exports full Hugging Face actor checkpoints so they can be
-evaluated independently later. Each FP32 actor export is approximately 30 GB;
-the existing retention policy keeps two per mode. Allow roughly 200 GB for actor
-exports across the three modes, plus rollout/replay/WM artifacts. Shared-storage
-write speed affects the timing estimate.
+The camera-ready pilot saves sharded FSDP actors plus Adam/RNG state and simulator
+runtime state. Independent evaluation takes `--actor-checkpoint` with the same
+actor rank count; resume takes a published `completed_stage_*.pt`. The pilot
+retains the latest completed checkpoint created per mode; pre-existing and
+resumed source runs are preserved. FP32 actor parameters and two Adam moments
+alone cost about 90 GB per saved stage, before simulator and artifacts. Allow
+space for the next save before retention runs. I/O affects the timing estimate.
 
 ## Saved evidence
 

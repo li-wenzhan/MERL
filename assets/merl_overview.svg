@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 440" role="img" aria-labelledby="title description">
+  <title id="title">MERL refinement stage</title>
+  <desc id="description">Six grounded trajectories update the world model and proxy. Stored-action calibration refreshes a frozen residual predictor. Recursive imagination uses predicted observations and chunk trust. Independently normalized real and imagined objectives update the policy.</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="#64748b" stroke-width="1.5"/></marker></defs>
+  <rect width="1180" height="440" rx="20" fill="#f8fafc"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#0f172a">
+    <text x="36" y="41" font-size="23" font-weight="700">One MERL refinement stage</text>
+    <text x="36" y="67" font-size="15" fill="#64748b">Grounded feedback calibrates imagination before it changes the policy.</text>
+    <rect x="36" y="100" width="245" height="132" rx="12" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="54" y="132" font-size="18" font-weight="700">1  Grounded collection</text>
+    <text x="54" y="164" font-size="14">6 trajectories · at most 3,072 steps</text>
+    <text x="54" y="188" font-size="15">Stored RGB, executed actions</text>
+    <text x="54" y="212" font-size="15">Terminal environment success</text>
+    <rect x="319" y="100" width="245" height="132" rx="12" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="337" y="132" font-size="18" font-weight="700">2  Evolving simulator</text>
+    <text x="337" y="164" font-size="15">Ctrl-World visual prediction</text>
+    <text x="337" y="188" font-size="15">Soft success-to-go proxy</text>
+    <text x="337" y="212" font-size="15">Grounded supervision only</text>
+    <rect x="602" y="100" width="245" height="132" rx="12" fill="#f0fdfa" stroke="#5eead4"/>
+    <text x="620" y="132" font-size="18" font-weight="700">3  Stored calibration</text>
+    <text x="620" y="164" font-size="14">Recorded actions · depths 1–4</text>
+    <text x="620" y="188" font-size="15">Refresh and freeze residual MLP</text>
+    <text x="620" y="212" font-size="15">0 additional environment calls</text>
+    <rect x="885" y="100" width="259" height="132" rx="12" fill="#f0fdfa" stroke="#5eead4"/>
+    <text x="903" y="132" font-size="18" font-weight="700">Stage-level trust</text>
+    <text x="903" y="164" font-size="14">Measured error → EMA confidence</text>
+    <text x="903" y="188" font-size="15">Imagined ratio: 0.05–0.95</text>
+    <text x="903" y="212" font-size="15">Horizon: 8–32 environment steps</text>
+    <rect x="319" y="287" width="528" height="113" rx="12" fill="#faf5ff" stroke="#c4b5fd"/>
+    <text x="337" y="320" font-size="18" font-weight="700">4  Recursive imagination + chunk-level trust</text>
+    <text x="337" y="350" font-size="14">Predicted RGB → policy tokens → executed commands → predicted RGB</text>
+    <text x="337" y="377" font-size="14">No future GT queries · low-error replay priority · detached loss weights</text>
+    <rect x="885" y="287" width="259" height="113" rx="12" fill="#fff7ed" stroke="#fdba74"/>
+    <text x="903" y="320" font-size="18" font-weight="700">5  Mixed policy update</text>
+    <text x="903" y="350" font-size="15">Categorical token GRPO ratios</text>
+    <text x="903" y="377" font-size="15">Normalize each branch by chunks</text>
+  </g>
+  <g fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M281 165H311"/><path d="M564 165H594"/><path d="M847 165H877"/>
+    <path d="M725 232V279"/><path d="M1015 232V260H790V279"/>
+    <path d="M847 345H877"/><path d="M159 232V251H1015V279"/>
+  </g>
+  <text x="45" y="314" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#64748b">3 actor GPUs</text>
+  <text x="45" y="340" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#64748b">1 simulator GPU</text>
+  <text x="45" y="381" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#64748b">8-step × 7D action chunks</text>
+</svg>

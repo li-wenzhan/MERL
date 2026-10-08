@@ -86,7 +86,7 @@ class LiberoDataset(torch.utils.data.Dataset):
                 for i in range(1, episode_num):
                     samples.append((task_name, episode, [max(0, i - num_frames + 1 + j) for j in range(num_frames)]))
                 return samples
-            
+
             # Use ThreadPoolExecutor for parallel processing
             with ThreadPoolExecutor(32) as executor:
                 # Submit tasks to executor
@@ -127,11 +127,11 @@ class LiberoDataset(torch.utils.data.Dataset):
             self.q99[task_name] = np.array(self.dataset_statistics[task_name]['action']['q99'])
         try:
             tokenizer = AutoTokenizer.from_pretrained(
-                '/mnt/bn/zhufangqi-lq-c2ec0f30/zhufangqi/world-model/openvla/meta-llama/Llama-2-7b-hf', model_max_length=2048, token="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", padding_side="right"
+                '/mnt/bn/zhufangqi-lq-c2ec0f30/zhufangqi/world-model/openvla/meta-llama/Llama-2-7b-hf', model_max_length=2048, token=os.environ.get("HF_TOKEN"), padding_side="right"
             )
         except:
             tokenizer = AutoTokenizer.from_pretrained(
-                '/mnt/hdfs/zhufangqi/pretrained_models/meta-llama/Llama-2-7b-hf', model_max_length=2048, token="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", padding_side="right"
+                '/mnt/hdfs/zhufangqi/pretrained_models/meta-llama/Llama-2-7b-hf', model_max_length=2048, token=os.environ.get("HF_TOKEN"), padding_side="right"
             )
         tokenizer.add_special_tokens({"pad_token": "<PAD>"})
         # get dataset
@@ -172,7 +172,7 @@ class LiberoDataset(torch.utils.data.Dataset):
         # lang_path = os.path.join(self.data_path, f"lang/{episode_id}.txt")
         # with open(lang_path, "r") as f:
         #     lang = f.read()
-        
+
         actions_path = os.path.join(self.data_path, task_name, f"actions/{episode_id}.npy")
 
         with open(actions_path, "rb") as f:
@@ -215,8 +215,8 @@ class LiberoDataset(torch.utils.data.Dataset):
         # imageio.mimwrite('output.mp4', rec_video, fps=3)
 
 
-        ret = {"video": video, 
-               "fps": 3, 
+        ret = {"video": video,
+               "fps": 3,
                "action": action,
                "num_frames": video.shape[1],
                "height": video.shape[2],

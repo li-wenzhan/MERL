@@ -104,7 +104,7 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--wm-config", default="configs/wm_online_config.py")
     p.add_argument("--start", type=int, default=64)
-    p.add_argument("--horizon", type=int, default=64)
+    p.add_argument("--horizon", type=int, default=32)
     p.add_argument("--rollout", choices=("recursive", "teacher_forced"), default="recursive")
     p.add_argument("--inference-steps", type=int, default=8)
     p.add_argument("--seed", type=int, default=1024)
@@ -153,7 +153,7 @@ def main():
                     action_convention="libero_env_executed; no further gripper conversion",
                     preprocessing="RGB uint8 PIL bilinear resize to 320x192",
                     wm_config_sha256=file_digest(args.wm_config), source_sha256=file_digest(__file__),
-                    caveat="Fixed-action simulator fidelity, not policy success or trust admission; legacy training still uses a grounded mirror.",
+                    caveat="Held-out fixed-action simulator fidelity; this does not measure closed-loop policy success or trust admission.",
                     results={})
     def save():
         (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

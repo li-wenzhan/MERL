@@ -1,6 +1,6 @@
 """Explicit contracts for the online simulator baseline without trust mechanisms."""
 
-MODES = ("MERL", "MFRL", "MBRL", "ONLINE_MBRL")
+MODES = ("MERL", "MFRL", "MBRL", "ONLINE_MBRL", "STATIC_TRUST")
 ONLINE_WM_MODES = ("MERL", "ONLINE_MBRL")
 
 

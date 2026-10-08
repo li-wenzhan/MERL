@@ -663,68 +663,6 @@ PRESET_X_KEYS: Mapping[str, str] = {
     "03_delta_sample_efficiency": "sample_efficiency/cum_real_env_samples",
 }
 
-PLOT_GUIDE_LEGACY = OrderedDict(
-    [
-        (
-            "01_policy_success_reward",
-            "核心性能图。优先看 val/test_score/*；训练阶段可同时参考 rollout/success_rate 和 train_reward/*。",
-        ),
-        (
-            "02_sample_efficiency",
-            "样本效率图。横轴是累计真实环境样本数 sample_efficiency/cum_real_env_samples，MERL/MBRL/MFRL 应用同一横轴比较成功率提升速度。",
-        ),
-        (
-            "03_merl_ratio_scheduler",
-            "MERL 混合比例调度图。ratio_wm 上升代表 imagined 样本参与 PPO；ratio_wm_target 是调度目标。",
-        ),
-        (
-            "04_merl_confidence_weight",
-            "世界模型置信度与 imagined 权重图。confidence/sample_weight 越稳定，imag branch 越可信。",
-        ),
-        (
-            "05_merl_chunk_error",
-            "世界模型短 horizon 误差图。chunk_obs_error 与 done_error 越低越好；ratio_signal 是调度器使用的质量信号。",
-        ),
-        (
-            "07_merl_replay_mix",
-            "replay pool 与 real/WM 混合构成图。用于确认真实样本、想象样本和池容量是否符合预期。",
-        ),
-        (
-            "08_wm_train_update",
-            "世界模型训练图。loss/loss_ema 下降说明 WM 更新有效；steps_done 确认每轮内循环是否执行。",
-        ),
-        (
-            "09_wm_eval_psnr",
-            "WM 图像质量 PSNR，越高越好。mini/full 分别对应轻量评测和完整评测。",
-        ),
-        (
-            "12_wm_eval_reward",
-            "WM reward 预测质量。reward_MSE/MAE 越低越好，reward_Correlation 越高越好。",
-        ),
-        (
-            "13_wm_eval_done",
-            "终止/完成代理指标。当前版本主要作为诊断指标，不建议单独作为 scheduler 依据。",
-        ),
-        (
-            "15_imagined_ppo_contract",
-            "imagined PPO 合约图。ratio_wm > 0 后，actor/imag_token_count 与 actor/pg_loss_imag 应该同步非零。",
-        ),
-        (
-            "16_rollout_health",
-            "rollout 健康度图。dummy 比例越低越好；finish_step/full_horizon 可判断 horizon 是否过长或任务是否提前结束。",
-        ),
-        (
-            "17_actor_grpo_stability",
-            "Actor PPO 稳定性图。重点看 KL、clipfrac、grad_norm 是否出现尖峰。",
-        ),
-        (
-            "19_timing",
-            "训练耗时图。gen/update_actor/update_wm/testing 用于定位速度瓶颈。",
-        ),
-    ]
-)
-
-
 PLOT_GUIDE = OrderedDict(
     [
         (

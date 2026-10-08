@@ -21,7 +21,7 @@ class StoredTrajectory:
     instruction: str
     observations: Tensor  # [T+1, ...], one explicit observation per transition
     actions: Tensor  # [T,A], executed coordinates (including gripper conversion)
-    target_proxy: Tensor  # [T], target attached to the observation AFTER action
+    target_proxy: Tensor  # [T], q*_t aligned with pre-action o_t and executed a_t
     split: str
 
     def validate(self):
@@ -33,7 +33,7 @@ class StoredTrajectory:
         if self.observations.ndim < 2 or len(self.observations) != t + 1:
             raise ValueError("a trajectory needs T+1 observations for T actions")
         if self.target_proxy.shape != (t,):
-            raise ValueError("one explicit post-action target is required per action")
+            raise ValueError("one explicit transition-indexed target is required per action")
         for value in (self.observations, self.actions, self.target_proxy):
             if value.device != self.actions.device or not torch.isfinite(value).all():
                 raise ValueError("trajectory tensors must be finite and on one device")
@@ -133,6 +133,7 @@ def build_calibration_batch(
     trajectories: Sequence[StoredTrajectory], windows: Sequence[tuple[int, int]], *,
     history_size: int, chunk_size: int, stage_context: Tensor,
     simulator_revision: str, step: Callable, encode: Callable,
+    max_depth: int = 1,
 ) -> CalibrationBatch:
     """Replay only stored actions; windows are (trajectory index, start transition).
 
@@ -140,7 +141,7 @@ def build_calibration_batch(
     at o[start] predicts o[start+1:start+C+1]. A partial final window is padded and
     masked identically across features and labels. No live environment is queried.
     """
-    if (not trajectories or not windows or chunk_size < 1 or stage_context.ndim != 1
+    if (not trajectories or not windows or chunk_size < 1 or max_depth < 1 or stage_context.ndim != 1
             or not simulator_revision):
         raise ValueError("nonempty trajectories/windows, context and revision are required")
     ids = [item.trajectory_id for item in trajectories]
@@ -160,36 +161,45 @@ def build_calibration_batch(
         contexts.append(context_at(trajectories[index], start, history_size))
 
     anchors, predictions, actions_all, masks = [], [], [], []
-    grounded, proxies, targets, trajectory_ids, anchor_ids = [], [], [], [], []
+    grounded, proxies, targets, trajectory_ids, anchor_ids, depths = [], [], [], [], [], []
     for (index, start), context in zip(windows, contexts):
         item = trajectories[index]
-        actions = item.actions[start:start + chunk_size].detach().clone()
-        count = len(actions)
         simulator = HistorySimulator(context, step, encode)
-        prediction = simulator(context.anchor, actions, item.instruction)
-        anchor = simulator.encode_anchor(context.anchor).cpu().float()
-        truth = encode(item.observations[start + 1:start + count + 1].detach().clone()).detach().cpu().float()
-        predicted = prediction.latents.cpu().float()
-        if truth.shape != predicted.shape or truth.shape[1:] != anchor.shape:
-            raise ValueError("grounded, predicted and anchor encoder dimensions must match")
+        current = context.anchor
+        for depth in range(1, max_depth + 1):
+            offset = start + (depth - 1) * chunk_size
+            actions = item.actions[offset:offset + chunk_size].detach().clone()
+            count = len(actions)
+            if not count:
+                break
+            prediction = simulator(current, actions, item.instruction)
+            anchor = simulator.encode_anchor(current).cpu().float()
+            # Read grounded futures only after prediction has completed. Later
+            # chunks condition exclusively on predicted intermediate frames.
+            truth = encode(item.observations[offset + 1:offset + count + 1].detach().clone()).detach().cpu().float()
+            predicted = prediction.latents.cpu().float()
+            if truth.shape != predicted.shape or truth.shape[1:] != anchor.shape:
+                raise ValueError("grounded, predicted and anchor encoder dimensions must match")
 
-        def pad(value):
-            result = torch.zeros((chunk_size, *value.shape[1:]), dtype=torch.float32)
-            result[:count] = value.detach().cpu().float()
-            return result
+            def pad(value):
+                result = torch.zeros((chunk_size, *value.shape[1:]), dtype=torch.float32)
+                result[:count] = value.detach().cpu().float()
+                return result
 
-        anchors.append(anchor)
-        predictions.append(pad(predicted))
-        grounded.append(pad(truth))
-        actions_all.append(pad(actions))
-        proxies.append(pad(prediction.proxy))
-        targets.append(pad(item.target_proxy[start:start + count]))
-        masks.append(torch.arange(chunk_size) < count)
-        trajectory_ids.append(item.trajectory_id)
-        anchor_ids.append(context.anchor_id)
+            anchors.append(anchor)
+            predictions.append(pad(predicted))
+            grounded.append(pad(truth))
+            actions_all.append(pad(actions))
+            proxies.append(pad(prediction.proxy))
+            targets.append(pad(item.target_proxy[offset:offset + count]))
+            masks.append(torch.arange(chunk_size) < count)
+            trajectory_ids.append(item.trajectory_id)
+            anchor_ids.append(f"{context.anchor_id}/depth:{depth}" if max_depth > 1 else context.anchor_id)
+            depths.append(depth)
+            current = prediction.observations[-1].detach().clone()
     f = ChunkFeatures(torch.stack(anchors), torch.stack(predictions), torch.stack(actions_all),
-                      torch.ones(len(windows), dtype=torch.long),
-                      stage_context.detach().cpu().float()[None].repeat(len(windows), 1),
+                      torch.tensor(depths, dtype=torch.long),
+                      stage_context.detach().cpu().float()[None].repeat(len(depths), 1),
                       torch.stack(masks))
     result = CalibrationBatch(f, torch.stack(grounded), torch.stack(proxies), torch.stack(targets),
                               f.actions.clone(), tuple(trajectory_ids), tuple(anchor_ids),

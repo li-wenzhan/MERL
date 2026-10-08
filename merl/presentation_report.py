@@ -31,7 +31,13 @@ def load_panel(folder, protocol):
 
 def training_evidence(info):
     records = {}
-    for path in Path(info["experiment_dir"]).glob("run_*.log"):
+    root = Path(info["experiment_dir"])
+    for stages in (root / "paper_state/updates.jsonl", root / "paper_state/stages.jsonl"):
+        if stages.is_file():
+            for line in stages.read_text().splitlines():
+                item = json.loads(line)
+                records[int(item["stage"])] = item["metrics"]
+    for path in root.glob("run_*.log"):
         for line in path.read_text(errors="replace").splitlines():
             parts = line.split("\t", 2)
             if len(parts) != 3:
@@ -46,13 +52,13 @@ def training_evidence(info):
         return [float(row[key]) for row in records.values()
                 if isinstance(row.get(key), (int, float)) and math.isfinite(row[key])]
     return dict(completed_outer_steps=len(records),
-                optimizer_step_metric_max=max(finite_values("actor/optimizer_step_count"), default=0),
+                optimizer_step_metric_max=max(finite_values("actor/optimizer_step_count") + finite_values("actor/optimizer_updates"), default=0),
                 gradient_norm_max=max(finite_values("actor/grad_norm"), default=0),
                 imagined_actor_tokens_logged=sum(finite_values("wm/actor_input_imag_token_count")),
                 imagined_actor_weight_max=max(finite_values("wm/actor_input_imag_weight_mean"), default=0),
                 world_model_update_steps=sum(finite_values("wm/update/steps_done")),
-                checkpoints=[str(p) for p in sorted((Path(info["experiment_dir"]) / "actor").glob("global_step_*"))
-                             if (p / "config.json").is_file()])
+                checkpoints=[str(p) for p in sorted((root / "actor").glob("global_step_*"))
+                             if (p / "config.json").is_file() or (p / "checkpoint_meta.json").is_file()])
 
 
 def font(size):
@@ -120,7 +126,8 @@ def build_report(root):
     output = root / "report"
     output.mkdir(exist_ok=True)
     panels, summaries, rows = [], [], []
-    for mode in ("MFRL", "MBRL", "ONLINE_MBRL", "MERL"):
+    from merl.modes import MODES
+    for mode in MODES:
         folder = root / mode
         if not (folder / "run_info.json").exists():
             continue
@@ -138,12 +145,12 @@ def build_report(root):
             warnings.append("No nonzero finite actor gradient was logged; do not claim learned improvement")
         if mode == "MERL" and info["job"] == "train" and evidence["imagined_actor_tokens_logged"] == 0:
             warnings.append("No imagined actor tokens were logged; full MERL mechanism is not demonstrated")
-        if mode in ("MERL", "MBRL", "ONLINE_MBRL") and info["job"] == "train" and evidence["imagined_actor_weight_max"] == 0:
+        if mode in ("MERL", "MBRL", "STATIC_TRUST", "ONLINE_MBRL") and info["job"] == "train" and evidence["imagined_actor_weight_max"] == 0:
             warnings.append("No positive imagined actor weight was logged; WM contribution is not demonstrated")
         if mode in ("MERL", "ONLINE_MBRL") and info["job"] == "train" and evidence["world_model_update_steps"] == 0:
             warnings.append("No completed world-model updates were logged; simulator evolution is not demonstrated")
-        if mode == "MBRL" and evidence["world_model_update_steps"] > 0:
-            warnings.append("World-model updates were logged in MBRL; inspect the frozen-simulator contract")
+        if mode in ("MBRL", "STATIC_TRUST") and evidence["world_model_update_steps"] > 0:
+            warnings.append(f"World-model updates were logged in {mode}; inspect the frozen-simulator contract")
         if any(not r["video"] or r["frame_count"] <= 0 for r in panel.values()):
             warnings.append("Some evaluation episodes have no saved video")
         summary = dict(mode=info["label"], status=info["status"], evaluation_complete=complete,

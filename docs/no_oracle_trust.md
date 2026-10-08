@@ -3,9 +3,10 @@
 ## Status
 
 `merl/trust.py` and `merl/imagination.py` implement the residual predictor and
-Appendix A trust equations with CPU-testable boundaries. They are **not yet wired
-into `fit_wm_v5`**. Existing training launchers still use the legacy mirror path.
-Do not label their output as no-oracle MERL or as a reproduction of rebuttal Table II.
+Appendix A trust equations with CPU-testable boundaries. The default public
+`camera-ready` trainer integrates their contracts through `paper_trainer.py`,
+`paper_simulator.py` and `paper_rollout.py`. `fit_wm_v5` remains a separate legacy
+mirror path and is selected only with `--protocol legacy`.
 This implementation has no recovered training data/checkpoint corresponding to
 the reported paper numbers. Unit tests establish contracts, not empirical accuracy.
 
@@ -36,9 +37,10 @@ action chunk, valid-step mask, one-based depth and numeric stage context. Output
 are nonnegative estimates of visual MSE and proxy MAE. Future GT, terminal success,
 and actual recursive continuation never enter the inference feature object.
 
-Calibration currently uses exact **depth-one grounded windows** only. Predictions
-at depths 2--4 are consequently out-of-distribution extrapolation and require
-held-out validation. Including depth as an input does not establish depth robustness.
+Calibration replays exact stored actions recursively at depths 1--4, with
+predicted history after depth one. Future labels are read only after prediction;
+stored-action pairing does not require a live environment. Generalization to
+new policy continuations still requires held-out validation.
 The one-stage refit also does not learn variation across constant stage context.
 The paper/rebuttal does not specify the residual network, optimizer, encoder pooling,
 or their hyperparameters; the choices here are explicit engineering choices.
@@ -74,15 +76,16 @@ They must supply deterministic latent encoding for calibration versus inference.
 The current API supports one candidate trajectory at a time; collect multiple
 trajectories before normalizing replay probabilities over the full chunk population.
 
-The current production adapters, FSDP lockstep execution, action-token/old-log-prob
-retention, history-conditioned Ctrl-World calls and actor `DataProto` conversion
-remain integration work. A callback must not hide live environment access.
+The camera-ready adapters retain action tokens, recompute old log probabilities
+before updating, preserve history and run fixed candidate/depth counts across
+FSDP ranks. A callback must not hide live environment access. Four-GPU runtime
+validation remains distinct from the CPU boundary checks.
 
 ### Stored-window exporter and history boundary
 
 `merl.stored_calibration` implements offline pair construction and recursive
 history management. `StoredTrajectory` requires **T+1 observations for T executed
-actions**, explicit post-action proxy targets, a complete-trajectory split and an
+actions**, explicit pre-action proxy targets, a complete-trajectory split and an
 episode ID. It does not guess alignment from padded rollout videos. Window
 `start=k` uses `o[k]` as anchor, replays `a[k:k+C]` and labels against
 `o[k+1:k+C+1]`. Its H historical observations are the outcomes of the H preceding
@@ -97,7 +100,7 @@ from merl.stored_calibration import (
 # encode(frames[N,...]) -> frozen deterministic latents[N,D]
 batch = build_calibration_batch(
     calibration_episodes, windows=[(0, 8), (0, 16)],
-    history_size=8, chunk_size=8, stage_context=stage_context,
+    history_size=8, chunk_size=8, max_depth=4, stage_context=stage_context,
     simulator_revision=revision, step=step, encode=encode,
 )
 predictor.fit(batch, stage=stage)
@@ -123,10 +126,10 @@ non-calibration trajectories before any simulator call and masks partial windows
 Tests change future labels while holding the past fixed and verify identical
 prediction features, as well as action/history alignment at recursive depths.
 
-The callback adapters are still required: convert policy gripper coordinates to
-executed coordinates **once**, preserve policy tokens separately, define the
-deterministic visual encoding and adapt Ctrl-World tensor/image conventions.
-This boundary implementation is not an activation switch for the legacy trainer.
+`paper_rollout.py` converts policy gripper coordinates to executed coordinates
+**once** and retains categorical tokens separately. `paper_simulator.py` supplies
+deterministic visual encoding and Ctrl-World conventions. This integration does
+not alter the legacy trainer's research protocol.
 
 ## Equations and policy contract
 
@@ -155,7 +158,7 @@ features:
   anchor_latent: float [N,D]
   imagined_latents: float [N,C,D]
   actions: float [N,C,A]
-  depth: integer [N] (all 1 for exact calibration)
+  depth: integer [N] (1--4 for recursive stored-action calibration)
   stage_context: float [N,S]
   valid_steps: bool [N,C]
 grounded_latents: float [N,C,D]

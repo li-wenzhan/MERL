@@ -8,3 +8,7 @@ __pycache__
 /.venv/
 /.pytest_cache/
 /tmp/
+/models/
+/data/
+/weights/
+/runs/
