@@ -11,13 +11,14 @@
   <sup>3</sup>The Chinese University of Hong Kong, Shenzhen<br>
   <sup>4</sup>Shanghai AI Laboratory &nbsp; <sup>5</sup>University of Science and Technology of China
 </p>
-<p><sup>&dagger;</sup>Corresponding author: <a href="mailto:zhangrm27@mail.sysu.edu.cn">Ruimao Zhang</a></p>
+<!-- <p><sup>&dagger;</sup>Corresponding author: <a href="mailto:zhangrm27@mail.sysu.edu.cn">Ruimao Zhang</a></p> -->
 
 <p>
-  <img alt="CoRL 2026" src="https://img.shields.io/badge/CoRL-2026-1d4ed8">
-  <img alt="Python 3.10" src="https://img.shields.io/badge/Python-3.10-3776ab?logo=python&logoColor=white">
-  <img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-FSDP-ee4c2c?logo=pytorch&logoColor=white">
-  <img alt="Linux CUDA" src="https://img.shields.io/badge/Platform-Linux%20%7C%20CUDA-334155">
+  <a href="https://www.corl.org/"><img alt="CoRL 2026" src="https://img.shields.io/badge/CoRL-2026-1d4ed8"></a>
+  <a href="https://arxiv.org/search/?query=Trust-Calibrated+VLA+Policy+Post-Training+with+Evolving+Imagination&amp;searchtype=title" title="arXiv publication coming soon; search by title"><img alt="arXiv: coming soon" src="https://img.shields.io/badge/arXiv-coming%20soon-b31b1b?logo=arxiv&amp;logoColor=white"></a>
+  <a href="https://docs.python.org/3.10/"><img alt="Python 3.10" src="https://img.shields.io/badge/Python-3.10-3776ab?logo=python&amp;logoColor=white"></a>
+  <a href="https://docs.pytorch.org/docs/stable/fsdp.html"><img alt="PyTorch FSDP" src="https://img.shields.io/badge/PyTorch-FSDP-ee4c2c?logo=pytorch&amp;logoColor=white"></a>
+  <a href="https://docs.nvidia.com/cuda/cuda-installation-guide-linux/"><img alt="Linux CUDA" src="https://img.shields.io/badge/Platform-Linux%20%7C%20CUDA-334155"></a>
   <a href="https://github.com/li-wenzhan/MERL"><img alt="Code" src="https://img.shields.io/badge/Code-GitHub-181717?logo=github"></a>
 </p>
 <p>
@@ -36,7 +37,7 @@
 
 MERL uses grounded experience to improve both its policy and its simulator. It calibrates visual and progress errors on stored trajectories, then estimates the reliability of new imagined chunks with a frozen residual predictor. This supports recursive imagination as the policy changes, while concentrating policy updates on reliable experience.
 
-The implementation combines tokenized **OpenVLA-OFT**, **Ctrl-World**, **LIBERO-PRO**, Ray and FSDP. This repository provides the training loop, component controls, evaluation, resumable checkpoints, and tools for robot videos and simulator comparisons.
+The implementation combines tokenized [**OpenVLA-OFT**](https://github.com/moojink/openvla-oft), [**Ctrl-World**](https://github.com/Robert-gyj/Ctrl-World), [**LIBERO-PRO**](https://github.com/Zxy-MLlab/LIBERO-PRO), [Ray](https://docs.ray.io/en/latest/index.html) and [FSDP](https://docs.pytorch.org/docs/stable/fsdp.html). This repository provides the training loop, component controls, evaluation, resumable checkpoints, and tools for robot videos and simulator comparisons.
 
 ## Method
 
@@ -94,7 +95,7 @@ Start a fresh training run with the following sequence. MERL policy checkpoints 
 
 ### 1. Prepare the VLA initialization
 
-Train a categorical action-chunk policy from the public OpenVLA base model using the [OpenVLA-OFT fine-tuning workflow](https://github.com/moojink/openvla-oft/blob/main/LIBERO.md). Select **discrete token prediction**, **one RGB image**, **no proprioception** and **8 × 7 actions**:
+Train a categorical action-chunk policy from the public [OpenVLA base model](https://huggingface.co/openvla/openvla-7b) using the [OpenVLA-OFT fine-tuning workflow](https://github.com/moojink/openvla-oft/blob/main/LIBERO.md). Select **discrete token prediction**, **one RGB image**, **no proprioception** and **8 × 7 actions**:
 
 ```text
 --use_l1_regression False --use_diffusion False --use_film False
@@ -258,4 +259,4 @@ python -m unittest discover -s tests -v
 
 ## Acknowledgments
 
-MERL builds on VLA-RL, OpenVLA-OFT, Ctrl-World, LIBERO-PRO, Ray and PyTorch. We thank their authors and retain the original notices in vendored source. Refer to each upstream project's terms for its code, datasets and model weights.
+MERL builds on [VLA-RL](https://github.com/GuanxingLu/vlarl), [OpenVLA-OFT](https://github.com/moojink/openvla-oft), [Ctrl-World](https://github.com/Robert-gyj/Ctrl-World), [LIBERO-PRO](https://github.com/Zxy-MLlab/LIBERO-PRO), [Ray](https://docs.ray.io/en/latest/index.html) and [PyTorch](https://pytorch.org/). We thank their authors and retain the original notices in vendored source. Refer to each upstream project's terms for its code, datasets and model weights.
