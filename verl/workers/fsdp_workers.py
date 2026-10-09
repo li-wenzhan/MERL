@@ -2356,7 +2356,7 @@ class RobWMActorRolloutRefWorker(Worker):
     def init_model(self):
         #! wm added
         self.world_model_mapping = None
-        if self.config.world_model.enable and self._is_rollout and not self.config.world_model.get("paper_remote", False):
+        if self.config.world_model.enable and self._is_rollout and not self.config.world_model.get("shared_simulator", False):
             self.world_model_mapping = self._build_world_model_mapping()
             print(f"World Model has been initialized on {dist.get_rank()}.")
 
@@ -2570,8 +2570,8 @@ class RobWMActorRolloutRefWorker(Worker):
         with self.sharding_manager:
             log_gpu_memory_usage("After entering sharding manager", logger=logger)
             prompts = self.sharding_manager.preprocess_data(prompts)
-            if prompts.meta_info.get("paper_imagination", False):
-                from merl.paper_rollout import generate_imagination
+            if prompts.meta_info.get("recursive_imagination", False):
+                from merl.imagined_rollout import generate_imagination
                 output = generate_imagination(self.rollout, prompts)
             elif use_wm:
                 try:
@@ -2905,7 +2905,7 @@ class RobWMActorRolloutRefWorker(Worker):
         return {"loaded": True, "path": checkpoint_file}
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
-    def compute_paper_old_log_prob(self, data: DataProto):
+    def compute_chunk_log_prob(self, data: DataProto):
         data = data.to("cuda")
         if self._is_offload_param:
             load_fsdp_param_and_grad(self.actor_module_fsdp, torch.cuda.current_device(), self._is_offload_grad)
@@ -2918,12 +2918,12 @@ class RobWMActorRolloutRefWorker(Worker):
         return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def init_paper_runtime(self, seed):
+    def init_training_runtime(self, seed):
         set_seed(int(seed) + dist.get_rank())
         return {"rank": dist.get_rank(), "seed": int(seed) + dist.get_rank()}
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def save_paper_runtime(self, directory):
+    def save_training_runtime(self, directory):
         from merl.checkpoint import atomic_save, rng_state
         atomic_save(dict(format_version=1, world_size=dist.get_world_size(), rank=dist.get_rank(),
                          optimizer=self.actor_optimizer.state_dict(), scheduler=self.actor_lr_scheduler.state_dict(),
@@ -2932,12 +2932,12 @@ class RobWMActorRolloutRefWorker(Worker):
         return {"saved": True}
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def load_paper_runtime(self, directory):
+    def load_training_runtime(self, directory):
         from merl.checkpoint import restore_rng
         path = os.path.join(directory, f"runtime_rank_{dist.get_rank()}.pt")
         state = torch.load(path, map_location="cpu", weights_only=True)
         if state["format_version"] != 1 or state["world_size"] != dist.get_world_size() or state["rank"] != dist.get_rank():
-            raise ValueError("paper optimizer resume requires the same actor GPU layout")
+            raise ValueError("actor optimizer resume requires the same actor GPU layout")
         self.actor_optimizer.load_state_dict(state["optimizer"])
         self.actor_lr_scheduler.load_state_dict(state["scheduler"])
         restore_rng(state["rng"])
@@ -3515,8 +3515,8 @@ class WorldModelTrainer:
         gc.collect()
         return {"inited": True, "device": str(self.device)}
 
-    def paper_setup(self, config, mode):
-        from merl.paper_simulator import PaperSimulator
+    def setup_simulator(self, config, mode):
+        from merl.simulator import Simulator
         self.wm_args.self_forcing_weight = 0.0
         if mode in ("MERL", "ONLINE_MBRL"):
             # BF16 autocast is compute precision, not optimizer storage.
@@ -3525,44 +3525,44 @@ class WorldModelTrainer:
             for parameter in self.accelerator.unwrap_model(self.world_model).parameters():
                 if parameter.requires_grad:
                     parameter.data = parameter.data.float()
-        self.paper_simulator = PaperSimulator(self.accelerator.unwrap_model(self.world_model),
+        self.simulator = Simulator(self.accelerator.unwrap_model(self.world_model),
                                              self.wm_args, self.device, config, mode)
-        set_seed(self.paper_simulator.config.seed)
+        set_seed(self.simulator.config.seed)
         return {"ready": True, "mode": mode}
 
-    def paper_prepare_stage(self, paths, stage, output_dir):
-        return self.paper_simulator.prepare_stage(paths, stage, output_dir,
+    def prepare_simulation_stage(self, paths, stage, output_dir):
+        return self.simulator.prepare_stage(paths, stage, output_dir,
                                                   self.wm_optimizer, self.accelerator)
 
-    def paper_predict_chunk(self, observations, history_actions, actions, instruction, depth, stage, revision, seed=None):
-        return self.paper_simulator.predict_chunk(observations, history_actions, actions, instruction, depth, stage, revision, seed)
+    def predict_imagined_chunk(self, observations, history_actions, actions, instruction, depth, stage, revision, seed=None):
+        return self.simulator.predict_chunk(observations, history_actions, actions, instruction, depth, stage, revision, seed)
 
-    def paper_save_runtime(self, directory):
+    def save_training_runtime(self, directory):
         from merl.checkpoint import atomic_save, rng_state
         result = self.save_world_model(directory)
         if not result.get("saved"):
             raise RuntimeError(f"Simulator checkpoint failed: {result}")
         atomic_save(dict(format_version=1, optimizer=self.wm_optimizer.state_dict(),
-                         simulator=self.paper_simulator.state_dict(), rng=rng_state()),
+                         simulator=self.simulator.state_dict(), rng=rng_state()),
                     os.path.join(directory, "runtime.pt"))
-        if self.paper_simulator.predictor.model is not None:
-            self.paper_simulator.predictor.save(os.path.join(directory, "residual.pt"))
+        if self.simulator.predictor.model is not None:
+            self.simulator.predictor.save(os.path.join(directory, "residual.pt"))
         return {"saved": True}
 
-    def paper_load_runtime(self, directory):
+    def load_training_runtime(self, directory):
         from merl.checkpoint import restore_rng
         from merl.trust import ResidualPredictor
         from dataclasses import asdict
         payload = torch.load(os.path.join(directory, "runtime.pt"), map_location="cpu", weights_only=True)
         state = payload["simulator"]
-        if payload["format_version"] != 1 or state["config"] != asdict(self.paper_simulator.config) or state["mode"] != self.paper_simulator.mode:
+        if payload["format_version"] != 1 or state["config"] != asdict(self.simulator.config) or state["mode"] != self.simulator.mode:
             raise ValueError("simulator resume configuration differs from the completed run")
         self.load_checkpoint(os.path.join(directory, "world_model.pth"))
         self.wm_optimizer.load_state_dict(payload["optimizer"])
-        self.paper_simulator.load_state_dict(state)
+        self.simulator.load_state_dict(state)
         residual_path = os.path.join(directory, "residual.pt")
         if os.path.isfile(residual_path):
-            self.paper_simulator.predictor = ResidualPredictor.load(residual_path)
+            self.simulator.predictor = ResidualPredictor.load(residual_path)
         restore_rng(payload["rng"])
         return {"loaded": True}
 

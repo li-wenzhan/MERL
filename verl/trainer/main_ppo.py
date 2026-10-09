@@ -1112,7 +1112,7 @@ def main_task(config):
 
     from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
 
-    if config.actor_rollout_ref.world_model.enable or config.trainer.get("protocol") == "camera-ready":
+    if config.actor_rollout_ref.world_model.enable or config.trainer.get("engine") == "merl":
         print("Using World Model Actor Rollout Ref Worker.")
         from verl.workers.fsdp_workers import RobWMActorRolloutRefWorker
 
@@ -1193,11 +1193,11 @@ def main_task(config):
     finally:
         faulthandler.cancel_dump_traceback_later()
     print("[startup] all workers initialized; entering training/evaluation", flush=True)
-    if config.trainer.get("paper_actor_checkpoint"):
-        from merl.paper_trainer import _require_workers
-        _require_workers(trainer.actor_rollout_wg.load_checkpoint(config.trainer.paper_actor_checkpoint), "loaded")
-    if config.trainer.get("protocol") == "camera-ready" and not policy_evaluation and not config.trainer.get("rollout_before_train", False):
-        from merl.paper_trainer import fit
+    if config.trainer.get("actor_checkpoint"):
+        from merl.trainer import _require_workers
+        _require_workers(trainer.actor_rollout_wg.load_checkpoint(config.trainer.actor_checkpoint), "loaded")
+    if config.trainer.get("engine") == "merl" and not policy_evaluation and not config.trainer.get("rollout_before_train", False):
+        from merl.trainer import fit
         fit(trainer)
     elif train_mode == "MFRL" or policy_evaluation:
         trainer.fit()

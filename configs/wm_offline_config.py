@@ -10,11 +10,8 @@ _CTRL_WORLD_SAMPLE_JSON_DIR = str(
     _REPO_ROOT / "modules" / "ctrl_world" / "dataset" / "libero"
 )
 
-# ! Reader checklist:
-# ! 1) Set svd_model_path / clip_model_path to your local backbone directories.
-# ! 2) Set ckpt_path only if you want to warm-start offline WM training.
-# ! 3) Set libero_root to your local LIBERO codebase root for offline dataset tools.
-# ! 4) Set dataset_sample_json_dir to the LIBERO sample-json directory used by Ctrl-World.
+# Backbones are configured with MERL_SVD_MODEL_PATH and MERL_CLIP_MODEL_PATH.
+# Dataset settings below support the Ctrl-World offline tools.
 
 
 @dataclass
@@ -47,7 +44,7 @@ class wm_args:
     # logs parameters
     debug: bool = False
     tag: str = (
-        "libero_all_with_rm"  # ! todo: rename this offline experiment tag before launching training
+        "libero_all_with_rm"
     )
     output_dir: str = field(init=False)
     wandb_run_name: str = field(init=False)

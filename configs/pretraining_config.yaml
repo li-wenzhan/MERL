@@ -3,7 +3,7 @@ libero_pro_root: ""
 
 # Enable one perturbation type for each evaluation panel.
 # Environment perturbations require generated or downloaded OOD assets.
-use_environment: true
+use_environment: false
 use_swap: false
 use_object: false
 use_language: false

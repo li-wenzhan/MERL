@@ -1,6 +1,6 @@
 # Offline Real-World World Model Interface
 
-Goal: run Ctrl-World on real camera inputs without Ray, LIBERO, or DataProto.
+Predict visual futures from camera histories, proposed robot actions and task text.
 
 Input contract:
 
@@ -28,7 +28,7 @@ python -m real_world.world_model.cli_predict \
 HDF5 input:
 
 ```bash
-HDF5=tmp_files/hdf5/episode_25.hdf5 TASK="Put the red block into the box." bash examples/real_world_wm_predict_hdf5.sh
+HDF5=/data/robot/episode_25.hdf5 TASK="Put the red block into the box." bash examples/real_world_wm_predict_hdf5.sh
 ```
 
 The HDF5 wrapper exports a prediction window from the episode before calling the same
@@ -49,10 +49,8 @@ history window, and ground-truth future before running the expensive world model
 Sliding HDF5 prediction:
 
 ```bash
-HDF5=tmp_files/hdf5/episode_25.hdf5 TASK="Put the red block into the box." SLIDE_START_FRAME=250 SLIDE_END_FRAME=350 FRAME_STRIDE=1 ACTION_STRIDE=1 FPS=30 SLIDE_CHUNK_STEP=8 bash examples/real_world_wm_predict_hdf5.sh
+HDF5=/data/robot/episode_25.hdf5 TASK="Put the red block into the box." SLIDE_START_FRAME=250 SLIDE_END_FRAME=350 FRAME_STRIDE=1 ACTION_STRIDE=1 FPS=30 SLIDE_CHUNK_STEP=8 bash examples/real_world_wm_predict_hdf5.sh
 
-# For example:
-# HDF5=/mnt/afs/L202500276/data/hdf5/episode_0.hdf5 TASK="Put the red block into the box." SLIDE_START_FRAME=300 SLIDE_END_FRAME=396 FRAME_STRIDE=1 ACTION_STRIDE=1 FPS=30 SLIDE_CHUNK_STEP=8 OUTPUT_DIR=/mnt/afs/L202500276/project/MeRL_new/outputs/real_world_wm/episode_0_hdf5 bash examples/real_world_wm_predict_hdf5.sh
 ```
 
 When `SLIDE_START_FRAME` and `SLIDE_END_FRAME` are set, the wrapper loads the world model

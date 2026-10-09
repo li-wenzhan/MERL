@@ -12,22 +12,22 @@ import torch
 from torch.nn import functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from .paper import PaperConfig, load_grounded_trajectory
+from .algorithm import MERLConfig, load_grounded_trajectory
 from .stored_calibration import PastContext, build_calibration_batch
 from .trust import ChunkFeatures, ResidualPredictor, StageScheduler, TrustConfig, trust_scores
 
 
-class PaperSimulator:
+class Simulator:
     def __init__(self, model, wm_args, device, config, mode):
         self.model = model.module if hasattr(model, "module") else model
         self.wm_args = wm_args
         self.device = torch.device(device)
         self.dtype = getattr(wm_args, "dtype_obj", next(self.model.unet.parameters()).dtype)
-        self.config = PaperConfig.from_dict(config).for_mode(mode)
+        self.config = MERLConfig.from_dict(config).for_mode(mode)
         self.mode = mode
         c = self.config
         if wm_args.num_history != c.history_size or wm_args.num_frames != c.chunk_size:
-            raise ValueError("WM history/frame configuration must match camera-ready chunks")
+            raise ValueError("WM history/frame configuration must match MERL chunks")
         self.scheduler = StageScheduler(c.error_beta, c.reference_error, c.scheduler_kappa,
                                         c.ratio_min, c.ratio_max, c.horizon_min, c.horizon_max)
         self.predictor = ResidualPredictor(c.residual_hidden_dim, c.seed)
@@ -84,7 +84,7 @@ class PaperSimulator:
                 or context.actions.shape != (h, 7) or not torch.isfinite(context.actions).all()
                 or actions.ndim != 2 or actions.shape[1] != 7 or not 1 <= len(actions) <= c
                 or not torch.isfinite(actions).all()):
-            raise ValueError("camera-ready simulator requires past RGB[H], executed history[H,7] and 1..8 finite commands")
+            raise ValueError("MERL simulator requires past RGB[H], executed history[H,7] and 1..8 finite commands")
         self.model.eval()
         history = self.images(context.observations)
         history_latent = self.model.vae.encode(history).latent_dist.mean * self.model.vae.config.scaling_factor
@@ -153,7 +153,7 @@ class PaperSimulator:
                 terms, _ = self.model(batch)
                 loss = terms["loss_noise"] + c.proxy_loss_weight * terms["loss_reward"]
                 if not torch.isfinite(loss):
-                    raise FloatingPointError("non-finite camera-ready simulator loss")
+                    raise FloatingPointError("non-finite MERL simulator loss")
                 accelerator.backward(loss)
             try:
                 accelerator.unscale_gradients(optimizer=optimizer)
@@ -238,7 +238,7 @@ class PaperSimulator:
         if stage != self.stage or revision != self.revision:
             raise RuntimeError("stale actor simulator revision")
         if not 1 <= int(depth) <= 4:
-            raise ValueError("paper imagination depth must be 1..4")
+            raise ValueError("merl imagination depth must be 1..4")
         context = PastContext(torch.as_tensor(observations), torch.as_tensor(history_actions),
                               instruction, "actor-past-only-context")
         actions = torch.as_tensor(actions)

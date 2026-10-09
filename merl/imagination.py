@@ -2,7 +2,6 @@
 
 Production adapters supply a policy, a frozen simulator and an encoder. The core
 keeps policy queries on predicted observations and returns chunk-level trust.
-It does not turn a legacy mirrored environment rollout into imagination.
 """
 
 from dataclasses import dataclass

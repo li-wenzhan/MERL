@@ -1,55 +1,27 @@
-# Minimal entrypoints
+# Run entrypoints
 
-`run_libero.sh` forwards to `python -m merl.launch`: one entry for MERL and its
-four component controls, with `--job train|evaluate|collect`. Devices and assets are arguments, not
-separate scripts. Internal helpers now live in `scripts/`.
+| Script | Purpose |
+| :--- | :--- |
+| `run_libero.sh` | Forward arguments to `python -m merl.launch` for training, evaluation or collection |
+| `run_presentation.sh` | Sequential mode comparison with robot videos and quantitative summaries |
+| `generate_shared_wm_eval_dataset.sh` | Collect fixed mini/full evaluation panels |
+| `real_world_wm_predict.sh` | Predict from camera video or frame directories |
+| `real_world_wm_predict_hdf5.sh` | Extract HDF5 windows and predict their future frames |
 
-`run_presentation.sh` runs short training and complete real-environment evaluation
-sequentially for all three modes on one four-GPU allocation. It saves checkpoints,
-all requested episode videos, keyframes and comparison reports. See the
-[presentation pilot](../docs/presentation_pilot.md) for budgets and limitations.
-
-## Fixed WM evaluation data
-
-```bash
-SFT_CHECKPOINT=/models/openvla-oft \
-SHARED_WM_EVAL=/data/wm_eval_run001 EXPERIMENT=wm_eval_run001 ACTOR_GPUS=1 \
-bash examples/generate_shared_wm_eval_dataset.sh
-```
-
-Collection uses deterministic real-environment trajectories without policy updates.
-Mini/full use 2/6 trials per task and may share initial-state prefixes: they are not
-independent statistical replicates. Nonempty splits cannot be reused. Keep this
-root separate from training data and record checkpoint, task/trial IDs and revision.
-
-## Real-environment evaluation
+Start with the [training guide](../docs/training.md), [runtime setup](../docs/runtime.md) and [visualization guide](../docs/visualization.md). Scripts preserve the arguments accepted by their Python entrypoints.
 
 ```bash
-bash examples/run_libero.sh --mode MERL --job evaluate \
-  --sft-checkpoint /models/openvla-oft \
-  --actor-checkpoint checkpoints/MERL/RUN/actor/global_step_100 \
-  --experiment merl_eval_001 --actor-gpus 3 --trials 6
+bash scripts/run_logged.sh bash examples/run_libero.sh \
+  --mode MERL --experiment seed0 --vla-init "$VLA_INIT" --wm-checkpoint "$WM_INIT"
 ```
 
-Supply base SFT assets including action statistics and a complete FSDP checkpoint
-directory with its original rank count. For a full HF export, omit
-`--actor-checkpoint` and supply that export as the SFT asset. Evaluation uses environment
-success. Match evaluation configuration, initial states, sampling and horizons
-across methods; retain failures and timeouts.
+The log wrapper saves stdout/stderr and exit status under `tmp_files/acp_logs`; set `ACP_LOG_DIR` to change the destination.
 
-## Result inspection
+Collect fixed evaluation trajectories in a separate directory:
 
 ```bash
-python scripts/compare_mode_results.py \
-  --mfrl checkpoints/MFRL/<run> --mbrl checkpoints/MBRL/<run> \
-  --merl checkpoints/MERL/<run>
+SFT_CHECKPOINT="$VLA_INIT" SHARED_WM_EVAL=/data/wm_eval \
+  EXPERIMENT=wm_eval ACTOR_GPUS=1 bash examples/generate_shared_wm_eval_dataset.sh
 ```
 
-Inspect `val/test_score/all` for environment success; training proxy reward is not
-a success label. With fixed WM evaluation enabled, inspect `wm/eval/*` plus
-missing-data/error diagnostics. Camera-ready controls share optimizer and data
-contracts. Legacy profiles differ and require separate labeling.
-See [the runbook](../docs/h100_runbook.md).
-
-The two `real_world_wm_predict*.sh` scripts handle separate video/HDF5 inputs.
-Offline simulator training remains at `modules/ctrl_world/train_new.sh`.
+Mini/full panels contain 2/6 trials per task. Use `--split wm_train --collection-dir /data/wm_init` through `run_libero.sh` for simulator training data, then run `python -m merl.train_simulator`. Algorithm parameters live in `configs/merl.json`.

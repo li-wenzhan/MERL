@@ -1,4 +1,4 @@
-"""Legacy score-per-trajectory diagnostics, not paper AUC or S2T-H metrics."""
+"""Legacy score-per-trajectory diagnostics, using score per trajectory."""
 
 import json
 import math

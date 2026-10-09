@@ -1,16 +1,16 @@
-# Real-World MERL Branch
+# Robot-data world models
 
-This branch is intentionally independent from Ray, LIBERO, and DataProto.
+These tools train and query Ctrl-World from camera and HDF5 robot data.
 
-Stage 1 focuses on an offline real-world world-model interface:
+The prediction workflow:
 
 1. Load a real camera video or image sequence.
 2. Load a robot action sequence and a task instruction.
 3. Run Ctrl-World once on a single GPU.
 4. Save predicted future frames/video and per-frame reward scores.
-5. Emit a structured `result.json` that can later be consumed by MERL replay or diagnostics.
+5. Emit a structured `result.json` containing predictions, scores and input metadata.
 
-The first runnable entrypoint is:
+Run camera prediction with:
 
 ```bash
 bash examples/real_world_wm_predict.sh
@@ -38,9 +38,7 @@ action
 For bimanual 14D actions, the default `ACTION_SLICE=right` selects `action[:, 7:14]`.
 The reward target is synthetic because real data has no reward: each training window has
 reward shape `[T]`, with the last frame set to `1` and all earlier frames set to `0`.
-This auxiliary target is not the camera-ready grounded success-to-go target and
-does not establish task success. These tools do not implement the paper's complete
-fixed-data physical-robot policy adaptation experiment.
+This trains a window-end progress classifier; `rewards.json` stores its per-frame scores.
 
 Training and validation split by complete eligible episodes. Overlapping windows
 from one episode never enter both splits. Validation requires at least two

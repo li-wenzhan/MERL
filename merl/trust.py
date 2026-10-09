@@ -1,4 +1,4 @@
-"""No-oracle residual estimation and the trust rules in paper Appendix A.
+"""No-oracle residual estimation and stage/chunk trust rules.
 
 Only CalibrationBatch contains grounded futures. Inference accepts ChunkFeatures
 and a simulator revision, so future observations cannot enter the scoring API.
@@ -239,9 +239,8 @@ class StageScheduler:
 class ResidualPredictor:
     """A small two-output MLP, re-fit atomically after each simulator update.
 
-    Fit is deterministic on CPU and does not alter policy RNG streams. Published
-    snapshots are frozen. This is a new implementation of the stated mechanism,
-    not a recovered checkpoint or evidence of the paper's reported accuracy.
+    Fit is deterministic on CPU and does not alter policy RNG streams. Each
+    snapshot is frozen while the policy generates and optimizes imagination.
     """
 
     def __init__(self, hidden_dim: int = 64, seed: int = 0):

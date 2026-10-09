@@ -9,8 +9,8 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from merl.paper import PaperConfig
-from merl.paper_simulator import PaperSimulator
+from merl.algorithm import MERLConfig
+from merl.simulator import Simulator
 from merl.stored_calibration import PastContext, StoredTrajectory
 
 
@@ -45,7 +45,7 @@ class SimulatorTests(unittest.TestCase):
         args = SimpleNamespace(num_history=8, num_frames=8, height=4, width=6,
                                num_inference_steps=2, decode_chunk_size=8, guidance_scale=2,
                                fps=4, motion_bucket_id=127, frame_level_cond=True, his_cond_zero=False)
-        return PaperSimulator(FakeModel(), args, "cpu", asdict(PaperConfig()), "MERL")
+        return Simulator(FakeModel(), args, "cpu", asdict(MERLConfig()), "MERL")
 
     def test_training_windows_separate_pre_action_proxy_and_post_action_visual_targets(self):
         simulator = self.simulator()
@@ -80,7 +80,7 @@ class SimulatorTests(unittest.TestCase):
         torch.testing.assert_close(simulator.model.reward_classifier.images[:, 0, 0, 0], torch.tensor([1., -1.]))
 
     def test_grounded_export_rejects_bad_types_instead_of_silent_image_conversion(self):
-        from merl.paper import save_grounded_trajectory
+        from merl.algorithm import save_grounded_trajectory
         with self.assertRaises(ValueError):
             save_grounded_trajectory("unused.npz", observations=np.zeros((2, 4, 6, 3)),
                                      executed_actions=np.ones((1, 7)), instruction="place",

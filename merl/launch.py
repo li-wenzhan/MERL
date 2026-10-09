@@ -1,4 +1,4 @@
-"""Unified LIBERO training, evaluation and collection on CCI/ACP."""
+"""LIBERO policy training, evaluation and trajectory collection."""
 
 import argparse
 from datetime import datetime, timezone
@@ -25,52 +25,50 @@ def digest(path):
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--mode", required=True, choices=MODES)
-    p.add_argument("--protocol", choices=("camera-ready", "legacy"), default="camera-ready")
-    p.add_argument("--paper-config", type=Path, default=ROOT / "configs/camera_ready.json")
+    p.add_argument("--config", type=Path, default=ROOT / "configs/merl.json")
     p.add_argument("--stages", type=int, default=100, help="Total outer refinement stages, including resumed stages")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--checkpoint-keep", type=int, default=2, help="Completed checkpoints retained in this fresh run; 0 keeps all")
-    p.add_argument("--resume-from", type=Path, help="A completed camera-ready stage .pt, restored into a fresh run")
+    p.add_argument("--resume-from", type=Path, help="A completed MERL stage .pt, restored into a fresh run")
     p.add_argument("--actor-checkpoint", type=Path, help="FSDP actor checkpoint to evaluate, using SFT assets as the base")
     p.add_argument("--job", choices=("train", "evaluate", "collect"), default="train")
-    p.add_argument("--sft-checkpoint", type=Path, required=True)
+    p.add_argument("--vla-init", "--sft-checkpoint", dest="sft_checkpoint", type=Path, required=True,
+                   help="Categorical OpenVLA-OFT initialization directory")
     p.add_argument("--wm-checkpoint", type=Path)
     p.add_argument("--eval-config", type=Path, default=ROOT / "configs/evaluation_config.yaml")
     p.add_argument("--wm-config", type=Path, default=ROOT / "configs/wm_online_config.py")
     p.add_argument("--output-root", type=Path, default=ROOT / "checkpoints")
     p.add_argument("--experiment", required=True)
     p.add_argument("--suite", default="libero_10", choices=("libero_10", "libero_spatial", "libero_object", "libero_goal"))
+    p.add_argument("--unnorm-key", help="Action statistics key; defaults to the selected suite")
     p.add_argument("--actor-gpus", type=int, default=3)
-    p.add_argument("--shared-wm-eval", type=Path)
-    p.add_argument("--wm-eval", choices=("off", "fixed"), default="off")
-    p.add_argument("--split", default="wm_eval_fixed_mini", choices=("wm_eval_fixed_mini", "wm_eval_fixed_full"))
+    p.add_argument("--collection-dir", "--shared-wm-eval", dest="shared_wm_eval", type=Path)
+    p.add_argument("--split", default="wm_eval_fixed_mini", choices=("wm_train", "wm_eval_fixed_mini", "wm_eval_fixed_full"))
+    p.add_argument("--collection-trial-offset", type=int, help="First collected state ID; defaults to 0 for training, 10 for evaluation")
     p.add_argument("--trials", type=int, default=2, help="Trials per task for collection/evaluation")
-    p.add_argument("--smoke", action="store_true", help="One short update; not benchmark evidence")
+    p.add_argument("--smoke", action="store_true", help="Run one short update")
     group = p.add_mutually_exclusive_group()
     group.add_argument("--dry-run", action="store_true", help="Print command without accessing assets or GPUs")
-    group.add_argument("--check", action="store_true", help="Check assets and compose config on CCI; no Ray or training")
+    group.add_argument("--check", action="store_true", help="Check assets and compose config; no Ray or training")
     p.add_argument("--render-check", action="store_true", help="Also reset and step a real environment")
     p.add_argument("overrides", nargs=argparse.REMAINDER, help="Hydra overrides after --")
     return p
 
 
 def build_settings(args):
-    if args.protocol == "legacy" and (args.mode == "STATIC_TRUST" or args.resume_from or args.actor_checkpoint):
-        raise ValueError("STATIC_TRUST and full-stage/sharded checkpoint options require --protocol camera-ready")
     if args.actor_gpus < 1 or args.trials < 1:
         raise ValueError("actor-gpus and trials must be positive")
     if (not args.experiment or args.experiment in (".", "..")
             or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_." for c in args.experiment)):
         raise ValueError("experiment must be a single ASCII name")
     if args.job == "collect" and args.mode != "MFRL":
-        raise ValueError("fixed evaluation collection requires real-only MFRL mode")
-    if args.wm_eval == "fixed" and (args.mode == "MFRL" or args.job != "train"):
-        raise ValueError("fixed WM evaluation requires MERL/MBRL training")
-    if (args.wm_eval == "fixed" or args.job == "collect") and not args.shared_wm_eval:
-        raise ValueError("--shared-wm-eval is required for fixed evaluation or collection")
+        raise ValueError("trajectory collection requires real-only MFRL mode")
+    if args.job == "collect" and not args.shared_wm_eval:
+        raise ValueError("--collection-dir is required for trajectory collection")
+    if args.collection_trial_offset is not None and args.job != "collect":
+        raise ValueError("--collection-trial-offset applies to collection")
     raw = json.loads(PROFILE.read_text())
-    profile_mode = "MBRL" if args.mode == "STATIC_TRUST" else args.mode
-    cfg = {**raw["common"], **raw["modes"][profile_mode]}
+    cfg = dict(raw["common"])
     root = args.output_root.expanduser().resolve() / args.mode / args.experiment
     model = root / "actor_assets"
     wm_enabled = args.mode != "MFRL" and args.job == "train"
@@ -81,14 +79,14 @@ def build_settings(args):
         "actor_rollout_ref.model.path": str(model),
         "actor_rollout_ref.rollout.pretrained_checkpoint": str(model),
         "actor_rollout_ref.rollout.experiment_name": args.experiment,
-        "actor_rollout_ref.rollout.unnorm_key": args.suite,
+        "actor_rollout_ref.rollout.unnorm_key": args.unnorm_key or args.suite,
         "actor_rollout_ref.rollout.task_suite_name": args.suite,
         "actor_rollout_ref.rollout.libero_pro_eval_config_path": str(args.eval_config.expanduser().resolve()),
         "actor_rollout_ref.world_model.config_path": str(args.wm_config.expanduser().resolve()),
         "actor_rollout_ref.world_model.enable": wm_enabled,
         "actor_rollout_ref.world_model.fine_tune": wm_enabled and args.mode in ONLINE_WM_MODES,
         "actor_rollout_ref.world_model.load_from_ckpt": wm_enabled,
-        "actor_rollout_ref.world_model.fixed_eval_enabled": args.wm_eval == "fixed",
+        "actor_rollout_ref.world_model.fixed_eval_enabled": False,
         "actor_rollout_ref.wm_gpu_idx": args.actor_gpus if wm_enabled else 0,
         "actor_rollout_ref.rollout_base_dir": str(root / "rollouts"),
         "trainer.default_local_dir": str(root), "trainer.project_name": args.mode,
@@ -118,11 +116,20 @@ def build_settings(args):
                     "trainer.strict_validate_rollout": args.job == "evaluate",
                     "trainer.strict_mode_assert": False})
     if args.job == "collect":
+        trial_offset = args.collection_trial_offset
+        if trial_offset is None:
+            trial_offset = 0 if args.split == "wm_train" else 10
+        if trial_offset < 0 or trial_offset + args.trials > 50:
+            raise ValueError("collection trial IDs must fit within the 50-state panel")
         cfg.update({"trainer.rollout_before_train": True, "trainer.sim_rollout_epoch": 1,
+                    "data.rollout_trial_offset": trial_offset,
                     "trainer.preserve_rollout_base_dir": True, "trainer.rollout_train_split": args.split,
                     "trainer.rollout_save_eval": False, "trainer.rollout_save_to_hdfs": True,
                     "trainer.rollout_do_sample": False, "actor_rollout_ref.rollout.temperature": 0.0,
                     "actor_rollout_ref.rollout_base_dir": str(args.shared_wm_eval.expanduser().resolve())})
+    if args.job == "collect" and args.split == "wm_train":
+        cfg["actor_rollout_ref.rollout.grounded_export_dir"] = str(
+            args.shared_wm_eval.expanduser().resolve() / "wm_train" / "trajectories")
     if args.smoke:
         cfg.update({"trainer.total_training_steps": 1, "trainer.total_epochs": 1,
                     "data.filter_accuracy": False,
@@ -135,62 +142,55 @@ def build_settings(args):
                     "actor_rollout_ref.world_model.imag_horizon_max": 16,
                     "actor_rollout_ref.world_model.num_inference_steps": 2,
                     "actor_rollout_ref.world_model.eval_num_inference_steps": 2})
-    if args.protocol == "camera-ready":
-        from dataclasses import asdict, replace
-        from merl.paper import PaperConfig
-        paper = PaperConfig.from_dict(json.loads(args.paper_config.read_text(encoding="utf-8")))
-        paper = replace(paper, seed=args.seed).for_mode(args.mode)
-        if args.smoke:
-            paper = replace(paper, simulator_steps=1, residual_fit_steps=20, grounded_step_cap=16,
-                            calibration_depth=1, real_chunks_per_update=6, imagined_chunks_per_update=6)
-        if args.stages < 1 or args.checkpoint_keep < 0 or args.actor_gpus not in (1, 3):
-            raise ValueError("camera-ready supports positive stage counts and 1 or 3 actor GPUs")
-        if args.wm_eval == "fixed":
-            raise ValueError("use the separate held-out WM comparison command with camera-ready checkpoints")
-        cfg.update({
-            "paper": asdict(paper), "trainer.protocol": "camera-ready",
-            "trainer.total_training_steps": 1 if args.smoke else args.stages,
-            "trainer.total_epochs": args.stages, "trainer.val_only": args.job == "evaluate",
-            "trainer.val_before_train": args.job == "evaluate",
-            "trainer.final_val_after_train": True, "trainer.test_freq": 10, "trainer.save_freq": 5,
-            "trainer.paper_checkpoint_keep": args.checkpoint_keep,
-            "trainer.strict_validate_rollout": True, "trainer.preserve_rollout_base_dir": True,
-            "trainer.paper_resume_from": str(args.resume_from.resolve()) if args.resume_from else "",
-            "trainer.paper_actor_checkpoint": str(args.actor_checkpoint.resolve()) if args.actor_checkpoint else "",
-            "actor_rollout_ref.world_model.paper_remote": True,
-            "actor_rollout_ref.world_model.paper_config": asdict(paper),
-            "actor_rollout_ref.world_model.paper_mode": args.mode,
-            "actor_rollout_ref.world_model.mixed_precision": "bf16",
-            "actor_rollout_ref.world_model.dtype": "bf16",
-            "actor_rollout_ref.world_model.self_forcing_weight": 0.0,
-            "actor_rollout_ref.world_model.use_wm_reward_proxy": True,
-            "actor_rollout_ref.world_model.wm_real_anchor_reward": False,
-            "actor_rollout_ref.world_model.require_wm_anchor_reward": False,
-            "actor_rollout_ref.world_model.zero_unanchored_wm_weight": False,
-            "actor_rollout_ref.world_model.weak_update_enable": False,
-            "actor_rollout_ref.world_model.merl_imagined_reward_hard_constraint": False,
-            "actor_rollout_ref.world_model.imag_advantage_abs_clip": 0,
-            "actor_rollout_ref.world_model.wm_warmup_steps": 0,
-            "actor_rollout_ref.world_model.wm_grpo_uid_mode": "source",
-            "actor_rollout_ref.model.checkpoint_format": "fsdp_sharded_state_dict",
-            "actor_rollout_ref.actor.optim.lr": 5e-6,
-            "actor_rollout_ref.actor.clip_ratio_high": 0.2,
-            "actor_rollout_ref.actor.clip_ratio_low": 0.2,
-            "actor_rollout_ref.rollout.temperature": 1.2,
-            "actor_rollout_ref.rollout.train_max_steps": paper.grounded_step_cap,
-            "actor_rollout_ref.rollout.eval_max_steps": 512,
-            "actor_rollout_ref.rollout.paper_config": asdict(paper),
-            "actor_rollout_ref.rollout.presentation_dir": str(root / "evaluation"),
-            "actor_rollout_ref.rollout.presentation_label": args.mode,
-            "actor_rollout_ref.rollout.save_training_videos": True,
-            "actor_rollout_ref.actor.use_kl_loss": False, "algorithm.kl_ctrl.kl_coef": 0.,
-            "algorithm.adv_estimator": "grpo", "data.n_samples": 2 if args.job == "train" else 1,
-            "data.filter_accuracy": False, "data.eval_trial_offset": 10,
-        })
-    else:
-        cfg["trainer.protocol"] = "legacy"
-        if args.mode == "STATIC_TRUST" or args.resume_from or args.actor_checkpoint:
-            raise ValueError("STATIC_TRUST and full-state checkpoint options require camera-ready protocol")
+    from dataclasses import asdict, replace
+    from merl.algorithm import MERLConfig
+    merl = MERLConfig.from_dict(json.loads(args.config.read_text(encoding="utf-8")))
+    merl = replace(merl, seed=args.seed).for_mode(args.mode)
+    if args.smoke:
+        merl = replace(merl, simulator_steps=1, residual_fit_steps=20, grounded_step_cap=16,
+                        calibration_depth=1, real_chunks_per_update=6, imagined_chunks_per_update=6)
+    if args.stages < 1 or args.checkpoint_keep < 0 or args.actor_gpus not in (1, 3):
+        raise ValueError("MERL supports positive stage counts and 1 or 3 actor GPUs")
+    cfg.update({
+        "merl": asdict(merl), "trainer.engine": "merl",
+        "trainer.total_training_steps": 1 if args.smoke else args.stages,
+        "trainer.total_epochs": args.stages, "trainer.val_only": args.job == "evaluate",
+        "trainer.val_before_train": args.job == "evaluate",
+        "trainer.final_val_after_train": True, "trainer.test_freq": 10, "trainer.save_freq": 5,
+        "trainer.checkpoint_keep": args.checkpoint_keep,
+        "trainer.strict_validate_rollout": True, "trainer.preserve_rollout_base_dir": True,
+        "trainer.resume_from": str(args.resume_from.resolve()) if args.resume_from else "",
+        "trainer.actor_checkpoint": str(args.actor_checkpoint.resolve()) if args.actor_checkpoint else "",
+        "actor_rollout_ref.world_model.shared_simulator": True,
+        "actor_rollout_ref.world_model.merl_config": asdict(merl),
+        "actor_rollout_ref.world_model.train_mode": args.mode,
+        "actor_rollout_ref.world_model.mixed_precision": "bf16",
+        "actor_rollout_ref.world_model.dtype": "bf16",
+        "actor_rollout_ref.world_model.self_forcing_weight": 0.0,
+        "actor_rollout_ref.world_model.use_wm_reward_proxy": True,
+        "actor_rollout_ref.world_model.wm_real_anchor_reward": False,
+        "actor_rollout_ref.world_model.require_wm_anchor_reward": False,
+        "actor_rollout_ref.world_model.zero_unanchored_wm_weight": False,
+        "actor_rollout_ref.world_model.weak_update_enable": False,
+        "actor_rollout_ref.world_model.merl_imagined_reward_hard_constraint": False,
+        "actor_rollout_ref.world_model.imag_advantage_abs_clip": 0,
+        "actor_rollout_ref.world_model.wm_warmup_steps": 0,
+        "actor_rollout_ref.world_model.wm_grpo_uid_mode": "source",
+        "actor_rollout_ref.model.checkpoint_format": "fsdp_sharded_state_dict",
+        "actor_rollout_ref.actor.optim.lr": 5e-6,
+        "actor_rollout_ref.actor.clip_ratio_high": 0.2,
+        "actor_rollout_ref.actor.clip_ratio_low": 0.2,
+        "actor_rollout_ref.rollout.temperature": 1.2,
+        "actor_rollout_ref.rollout.train_max_steps": merl.grounded_step_cap,
+        "actor_rollout_ref.rollout.eval_max_steps": 512,
+        "actor_rollout_ref.rollout.merl_config": asdict(merl),
+        "actor_rollout_ref.rollout.presentation_dir": str(root / "evaluation"),
+        "actor_rollout_ref.rollout.presentation_label": args.mode,
+        "actor_rollout_ref.rollout.save_training_videos": True,
+        "actor_rollout_ref.actor.use_kl_loss": False, "algorithm.kl_ctrl.kl_coef": 0.,
+        "algorithm.adv_estimator": "grpo", "data.n_samples": 2 if args.job == "train" else 1,
+        "data.filter_accuracy": False, "data.eval_trial_offset": 10,
+    })
     if args.resume_from and args.job != "train":
         raise ValueError("--resume-from is a training operation")
     if args.actor_checkpoint and args.job == "train":
@@ -205,7 +205,7 @@ def hydra_args(settings, extra):
                  "actor_rollout_ref.wm_gpu_idx", "actor_rollout_ref.model.path",
                  "actor_rollout_ref.world_model.enable", "actor_rollout_ref.world_model.load_from_ckpt",
                  "actor_rollout_ref.world_model.ckpt_path", "trainer.resume.enable",
-                 "trainer.protocol", "actor_rollout_ref.world_model.paper_remote"}
+                 "trainer.engine", "actor_rollout_ref.world_model.shared_simulator"}
     protected.update({"actor_rollout_ref.world_model.fine_tune", "actor_rollout_ref.world_model.config_path",
                       "actor_rollout_ref.world_model.fixed_eval_enabled", "actor_rollout_ref.world_model.fixed_eval_root",
                       "actor_rollout_ref.rollout.pretrained_checkpoint", "actor_rollout_ref.rollout.libero_pro_eval_config_path",
@@ -213,6 +213,7 @@ def hydra_args(settings, extra):
                       "trainer.rollout_before_train", "trainer.val_only", "trainer.val_before_train",
                       "trainer.rollout_train_split", "trainer.preserve_rollout_base_dir",
                       "trainer.runtime_env", "data.task_suite_name", "actor_rollout_ref.rollout.task_suite_name",
+                      "data.rollout_trial_offset",
                       "actor_rollout_ref.rollout.unnorm_key"})
     def value(item):
         if isinstance(item, dict):
@@ -239,28 +240,28 @@ def compose_config(overrides):
     OmegaConf.resolve(cfg)
     if cfg.trainer.train_mode == "ONLINE_MBRL" and not cfg.trainer.val_only:
         validate_online_mbrl(cfg.actor_rollout_ref.world_model)
-    if cfg.trainer.get("protocol") == "camera-ready":
-        from merl.paper import PaperConfig
-        paper = PaperConfig.from_dict(OmegaConf.to_container(cfg.paper, resolve=True))
-        if paper.grounded_trajectories != 6:
-            raise ValueError("camera-ready collection requires exactly six grounded trajectories")
-        if cfg.actor_rollout_ref.world_model.enable and paper.grounded_step_cap <= paper.history_size:
+    if cfg.trainer.get("engine") == "merl":
+        from merl.algorithm import MERLConfig
+        merl = MERLConfig.from_dict(OmegaConf.to_container(cfg.merl, resolve=True))
+        if merl.grounded_trajectories != 6:
+            raise ValueError("MERL collection requires exactly six grounded trajectories")
+        if cfg.actor_rollout_ref.world_model.enable and merl.grounded_step_cap <= merl.history_size:
             raise ValueError("simulator training needs grounded trajectories longer than its stored history")
         if cfg.trainer.total_training_steps < 1:
-            raise ValueError("camera-ready requires a positive outer-stage limit")
+            raise ValueError("MERL requires a positive outer-stage limit")
         model, rollout = cfg.actor_rollout_ref.model, cfg.actor_rollout_ref.rollout
         if (model.vla != "openvla-oft" or model.action_token_len != 7 or model.action_chunks_len != 8
-                or paper.chunk_size != 8 or paper.history_size != 8 or rollout.use_proprio
+                or merl.chunk_size != 8 or merl.history_size != 8 or rollout.use_proprio
                 or rollout.num_images_in_input != 1):
-            raise ValueError("camera-ready requires tokenized OpenVLA-OFT, 8x7 commands, 8 history frames, one RGB and no proprioception")
+            raise ValueError("MERL requires tokenized OpenVLA-OFT, 8x7 commands, 8 history frames, one RGB and no proprioception")
         if cfg.actor_rollout_ref.actor.clip_ratio_low != cfg.actor_rollout_ref.actor.clip_ratio_high:
-            raise ValueError("camera-ready uses the paper's symmetric policy clipping threshold")
+            raise ValueError("MERL uses symmetric policy clipping")
         if (not cfg.trainer.val_only and not cfg.trainer.get("rollout_before_train", False)
                 and cfg.trainer.n_gpus_per_node == 1
                 and str(cfg.actor_rollout_ref.actor.fsdp_config.get("model_dtype", "fp32")).lower() in ("fp32", "float32", "none")):
             raise ValueError("full FP32 Adam training requires three actor GPUs; single-GPU evaluation/collection remains available")
     if cfg.trainer.nnodes != 1:
-        raise ValueError("the maintained launcher supports one ACP node")
+        raise ValueError("the launcher supports one node")
     for value in (cfg.data.train_batch_size, cfg.data.val_batch_size,
                   cfg.actor_rollout_ref.actor.ppo_mini_batch_size,
                   cfg.actor_rollout_ref.ref.log_prob_micro_batch_size):
@@ -297,13 +298,13 @@ def main():
         p.error(str(exc))
     command = [sys.executable, "-u", "-m", "verl.trainer.main_ppo", *overrides]
     if args.dry_run:
-        print(json.dumps({"profile": args.protocol, "command": command}, indent=2))
+        print(json.dumps({"engine": "merl", "command": command}, indent=2))
         return
     resolved = compose_config(overrides)
     env = runtime_env()
     wm = resolved["actor_rollout_ref"]["world_model"]
     if platform.system() != "Linux":
-        p.error("asset checks and execution require the Linux CCI/ACP environment")
+        p.error("asset checks and execution require Linux")
 
     def check(script, *arguments):
         started = time.monotonic()
@@ -314,7 +315,7 @@ def main():
 
     checkpoint = args.sft_checkpoint.expanduser().resolve()
     stats = json.loads((checkpoint / "dataset_statistics.json").read_text())
-    unnorm_key = args.suite if args.suite in stats else args.suite + "_no_noops"
+    unnorm_key = args.unnorm_key or (args.suite if args.suite in stats else args.suite + "_no_noops")
     check("preflight_openvla_oft.py", "--checkpoint", checkpoint, "--unnorm-key", unnorm_key)
     check("preflight_libero_pro_compat.py", "--config", args.eval_config.expanduser().resolve(), "--actor-import")
     if wm["enable"]:
@@ -339,9 +340,9 @@ def main():
                for i in range(torch.cuda.device_count())]
     required = args.actor_gpus + int(wm["enable"])
     if len(devices) < required:
-        p.error(f"requires {required} visible GPUs on ACP; found {len(devices)}. Use --check on CCI")
+        p.error(f"requires {required} visible GPUs; found {len(devices)}. Use --check for asset validation")
     run_dir.mkdir(parents=True, exist_ok=False)
-    manifest = {"profile": args.protocol, "job": args.job,
+    manifest = {"engine": "merl", "job": args.job,
                 "smoke": args.smoke,
                 "input_assets": {"sft_checkpoint": str(checkpoint),
                                  "sft_index_sha256": digest(checkpoint / "model.safetensors.index.json"),
@@ -355,8 +356,8 @@ def main():
                 "source_hashes": {str(path): digest(path) for path in (
                     PROFILE, args.eval_config.expanduser().resolve(), args.wm_config.expanduser().resolve(),
                     ROOT / "merl/launch.py", ROOT / "verl/trainer/main_ppo.py",
-                    ROOT / "configs/camera_ready.json", ROOT / "merl/paper.py", ROOT / "merl/checkpoint.py",
-                    ROOT / "merl/paper_trainer.py", ROOT / "merl/paper_rollout.py", ROOT / "merl/paper_simulator.py",
+                    args.config.expanduser().resolve(), ROOT / "merl/algorithm.py", ROOT / "merl/checkpoint.py",
+                    ROOT / "merl/trainer.py", ROOT / "merl/imagined_rollout.py", ROOT / "merl/simulator.py",
                     ROOT / "merl/trust.py", ROOT / "merl/stored_calibration.py", ROOT / "merl/proxy.py",
                     ROOT / "merl/episode_artifacts.py", ROOT / "verl/utils/dataset/rob_dataset.py",
                     ROOT / "merl/modes.py",

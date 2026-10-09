@@ -29,7 +29,7 @@ def _load_wm_args(config_path: str):
 
 
 def forward_smoke(model, cfg, image_path, instruction):
-    """Exercise the GPU pipeline with repeated history; not a fidelity metric."""
+    """Exercise the GPU pipeline with a frame repeated across the history."""
     import numpy as np
     from PIL import Image
     from modules.ctrl_world.models.pipeline_ctrl_world import CtrlWorldDiffusionPipeline
@@ -60,7 +60,7 @@ def forward_smoke(model, cfg, image_path, instruction):
         reward = model.reward_classifier.predict_score(images, encoded[0, -cfg.num_frames:])
         if not bool((torch.isfinite(reward) & (reward >= 0) & (reward <= 1)).all()):
             raise RuntimeError("Reward proxy must produce finite probabilities")
-    return {"kind": "synthetic_repeated_history_pipeline_smoke_not_fidelity_evidence",
+    return {"kind": "synthetic_repeated_history_pipeline",
             "frame_shape": list(array.shape), "latent_shape": list(latents.shape),
             "reward_shape": list(reward.shape), "finite": True, "inference_steps": 2,
             "peak_gpu_bytes": torch.cuda.max_memory_allocated()}

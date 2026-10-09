@@ -1,4 +1,4 @@
-"""Camera-ready contracts shared by the driver, actor and simulator worker.
+"""Algorithm contracts shared by the driver, actor and simulator worker.
 
 This module has no Ray, simulator, or model-loading imports. Observation o[t]
 precedes executed action u[t]; o[t+1] is its outcome. Categorical policy tokens
@@ -19,7 +19,7 @@ from .trust import success_to_go
 
 
 @dataclass(frozen=True)
-class PaperConfig:
+class MERLConfig:
     seed: int = 0
     grounded_trajectories: int = 6
     grounded_step_cap: int = 512
@@ -62,17 +62,17 @@ class PaperConfig:
                             "horizon_min", "horizon_max", "fixed_horizon", "imagined_group_size",
                             "real_chunks_per_update", "imagined_chunks_per_update")
         if any(type(getattr(self, k)) is not int or getattr(self, k) < 1 for k in integer_positive):
-            raise ValueError("paper counts and horizons must be positive integers")
+            raise ValueError("MERL counts and horizons must be positive integers")
         if type(self.seed) is not int or self.seed < 0:
-            raise ValueError("paper seed must be a nonnegative integer")
+            raise ValueError("MERL seed must be a nonnegative integer")
         if any(not math.isfinite(v) for v in asdict(self).values()):
-            raise ValueError("paper configuration must be finite")
+            raise ValueError("MERL configuration must be finite")
         if not (self.chunk_size <= self.horizon_min <= self.horizon_max <= 4 * self.chunk_size):
-            raise ValueError("paper imagination must remain within one to four action chunks")
+            raise ValueError("imagination must remain within one to four action chunks")
         if not self.chunk_size <= self.fixed_horizon <= 4 * self.chunk_size:
             raise ValueError("fixed baseline horizon must remain within one to four chunks")
         if not 0 <= self.ratio_min <= self.ratio_max <= 1 or not 0 <= self.fixed_ratio <= 1:
-            raise ValueError("invalid paper mixture ratios")
+            raise ValueError("invalid mixture ratios")
         if not 0 < self.proxy_discount <= 1 or self.proxy_loss_weight < 0:
             raise ValueError("invalid success-to-go/proxy loss configuration")
         if not 0 <= self.error_beta < 1 or min(self.reference_error, self.scheduler_kappa,
@@ -95,7 +95,7 @@ class PaperConfig:
             return replace(self, stage_trust=False, chunk_trust=False)
         if mode in ("MERL", "STATIC_TRUST"):
             return self
-        raise ValueError(f"unsupported camera-ready control: {mode}")
+        raise ValueError(f"unsupported MERL control: {mode}")
 
 
 def save_grounded_trajectory(path, *, observations, executed_actions, instruction,
@@ -125,7 +125,7 @@ def save_grounded_trajectory(path, *, observations, executed_actions, instructio
     return str(path.resolve())
 
 
-def load_grounded_trajectory(path, config: PaperConfig):
+def load_grounded_trajectory(path, config: MERLConfig):
     with np.load(path, allow_pickle=False) as data:
         metadata = json.loads(str(data["metadata"].item()))
         observations = torch.from_numpy(data["observations"].copy())
@@ -157,7 +157,7 @@ def grouped_advantages(scores: Tensor, groups) -> Tensor:
 
 def clipped_chunk_loss(new_logp: Tensor, old_logp: Tensor, advantages: Tensor,
                        valid_tokens: Tensor, clip_low: float, clip_high: float) -> Tensor:
-    """Paper Eq. 26: SUM categorical-token terms in each valid action chunk."""
+    """Categorical policy objective: SUM categorical-token terms in each valid action chunk."""
     if new_logp.ndim != 2 or any(x.shape != new_logp.shape for x in (old_logp, advantages, valid_tokens)):
         raise ValueError("log probabilities, advantages and masks must be [N,L]")
     if valid_tokens.dtype != torch.bool or min(clip_low, clip_high) < 0:

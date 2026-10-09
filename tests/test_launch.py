@@ -59,7 +59,7 @@ class LaunchTests(unittest.TestCase):
         for mode in ("MFRL", "MBRL", "STATIC_TRUST", "ONLINE_MBRL", "MERL"):
             cfg, _ = build_settings(self.args(mode))
             resolved = compose_config(hydra_args(cfg, []))
-            self.assertEqual(resolved["paper"]["grounded_trajectories"], 6)
+            self.assertEqual(resolved["merl"]["grounded_trajectories"], 6)
             self.assertEqual(resolved["trainer"]["n_gpus_per_node"], 3)
             self.assertEqual(resolved["actor_rollout_ref"]["world_model"]["mixed_precision"], "bf16")
             self.assertEqual(resolved["actor_rollout_ref"]["actor"]["clip_ratio_high"],

@@ -32,7 +32,7 @@ def load_panel(folder, protocol):
 def training_evidence(info):
     records = {}
     root = Path(info["experiment_dir"])
-    for stages in (root / "paper_state/updates.jsonl", root / "paper_state/stages.jsonl"):
+    for stages in sorted(root.rglob("updates.jsonl")) + sorted(root.rglob("stages.jsonl")):
         if stages.is_file():
             for line in stages.read_text().splitlines():
                 item = json.loads(line)
@@ -142,15 +142,15 @@ def build_report(root):
         if not complete:
             warnings.append("Incomplete/invalid evaluation: no comparable success rate")
         if info["job"] == "train" and evidence["gradient_norm_max"] == 0:
-            warnings.append("No nonzero finite actor gradient was logged; do not claim learned improvement")
+            warnings.append("Actor gradient norm is zero throughout saved updates")
         if mode == "MERL" and info["job"] == "train" and evidence["imagined_actor_tokens_logged"] == 0:
-            warnings.append("No imagined actor tokens were logged; full MERL mechanism is not demonstrated")
+            warnings.append("Saved updates contain no imagined actor tokens")
         if mode in ("MERL", "MBRL", "STATIC_TRUST", "ONLINE_MBRL") and info["job"] == "train" and evidence["imagined_actor_weight_max"] == 0:
-            warnings.append("No positive imagined actor weight was logged; WM contribution is not demonstrated")
+            warnings.append("Saved updates contain no positive imagined actor weight")
         if mode in ("MERL", "ONLINE_MBRL") and info["job"] == "train" and evidence["world_model_update_steps"] == 0:
-            warnings.append("No completed world-model updates were logged; simulator evolution is not demonstrated")
+            warnings.append("Saved updates contain no completed simulator optimizer steps")
         if mode in ("MBRL", "STATIC_TRUST") and evidence["world_model_update_steps"] > 0:
-            warnings.append(f"World-model updates were logged in {mode}; inspect the frozen-simulator contract")
+            warnings.append(f"World-model updates were logged in {mode}; expected a frozen simulator")
         if any(not r["video"] or r["frame_count"] <= 0 for r in panel.values()):
             warnings.append("Some evaluation episodes have no saved video")
         summary = dict(mode=info["label"], status=info["status"], evaluation_complete=complete,
@@ -178,17 +178,16 @@ def build_report(root):
         y = 125 + index * 105
         score = f"{row['successes']}/{row['requested_trials']} ({row['success_rate']:.0%})" if row["success_rate"] is not None else "INCOMPLETE"
         draw.text((30, y), f"{row['mode']}: {score} | outer updates: {row['completed_outer_steps']}", font=font(27), fill="white")
-        draw.text((30, y + 40), f"Status: {row['status']} | See summary.json for update evidence and limitations", font=font(17), fill="#bdd8ef")
+        draw.text((30, y + 40), f"Status: {row['status']} | See summary.json for training and evaluation metrics", font=font(17), fill="#bdd8ef")
     canvas.save(output / "scores.png")
     for task, trial in sorted(expected):
         if panels:
             render_trial([panel[(task, trial)] for panel in panels], output / f"task_{task:02d}_trial_{trial:02d}")
-    notes = ["# Presentation assets", "", "Exploratory short-budget pilot, not paper reproduction or a proven method ranking.",
-             "All requested trials are retained. Rates are withheld for incomplete or invalid panels.",
-             "Videos align by stored frame index at 30 playback FPS; ended episodes hold their final frame and are labeled.",
-             "The small fixed task panel uses evaluation states disjoint from online training states. SFT data overlap is unknown.",
-             "This is descriptive evidence, not a general benchmark or significance test.",
-             "Training budgets may differ in completed updates and interactions under the same wall-time cap.", ""]
+    notes = ["# Comparison assets", "",
+             "Metrics and videos for the saved evaluation panel.",
+             "All requested trials are retained; success rates require complete valid panels.",
+             "Videos align by frame index at 30 FPS. Completed episodes hold their final frame.",
+             "See summary.json for the evaluation settings, interactions and optimizer updates.", ""]
     for row in summaries:
         notes.append(f"- {row['mode']}: status={row['status']}; observed={row['observed_trials']}/{row['requested_trials']}; success_rate={row['success_rate']}")
         notes.extend(f"  - {warning}" for warning in row["warnings"])

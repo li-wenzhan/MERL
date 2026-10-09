@@ -376,7 +376,7 @@ class CtrlWorld(nn.Module):
             raise NotImplementedError("no obs img or latent provided!")
         texts = batch["text"]  # (B)
         action = batch["action"]  # (B, f, 7)
-        reward = batch["reward"]  # Soft success-to-go in the camera-ready path.
+        reward = batch["reward"]  # Soft success-to-go targets for simulator training.
 
         num_history = self.args.num_history
         latents = latents.to(device)  # [B, num_history + num_future, 4, 32, 32]

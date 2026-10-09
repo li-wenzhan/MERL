@@ -6,7 +6,7 @@ import hashlib
 import numpy as np
 import torch
 
-from .paper import PaperConfig, load_grounded_trajectory
+from .algorithm import MERLConfig, load_grounded_trajectory
 
 
 @torch.no_grad()
@@ -16,10 +16,10 @@ def generate_imagination(rollout, prompts):
     from verl.utils.libero_pro_utils import invert_gripper_action, normalize_gripper_action
     from merl.episode_artifacts import save_episode
 
-    config = PaperConfig.from_dict(prompts.meta_info["paper_config"])
+    config = MERLConfig.from_dict(prompts.meta_info["merl_config"])
     stage = int(prompts.meta_info["global_steps"])
-    horizon = int(prompts.meta_info["paper_horizon"])
-    revision = prompts.meta_info["paper_revision"]
+    horizon = int(prompts.meta_info["imagination_horizon"])
+    revision = prompts.meta_info["simulator_revision"]
     simulator = ray.get_actor("world_model_trainer")
     rollout.module.eval()
     records = []
@@ -27,7 +27,7 @@ def generate_imagination(rollout, prompts):
     residuals, scores, lengths, depths = [], [], [], []
     for path, start, candidate_id in zip(prompts.non_tensor_batch["anchor_path"],
                                         prompts.batch["anchor_start"].flatten().tolist(),
-                                        prompts.non_tensor_batch["paper_candidate_id"]):
+                                        prompts.non_tensor_batch["candidate_id"]):
         item = load_grounded_trajectory(path, config)
         # Copy only past context; keep future arrays out of the rollout loop.
         from .stored_calibration import context_at
@@ -53,15 +53,15 @@ def generate_imagination(rollout, prompts):
                                      for a in commands]).astype(np.float32)
                 count = min(config.chunk_size, horizon - elapsed)
                 request_seed = config.seed + int(hashlib.sha256(f"{candidate_id}/{sample}/{depth}".encode()).hexdigest()[:8], 16)
-                output = ray.get(simulator.paper_predict_chunk.remote(
+                output = ray.get(simulator.predict_imagined_chunk.remote(
                     context.observations.numpy(), context.actions.numpy(), commands[:count],
                     instruction, depth, stage, revision, request_seed))
                 prediction = torch.from_numpy(output["observations"])
                 proxy = torch.from_numpy(output["proxy"])
                 if prediction.shape != (count, *context.anchor.shape) or proxy.shape != (count,):
-                    raise RuntimeError("paper simulator output/action alignment failed")
+                    raise RuntimeError("merl simulator output/action alignment failed")
                 if not torch.isfinite(proxy).all() or ((proxy < 0) | (proxy > 1)).any():
-                    raise RuntimeError("paper proxy must return bounded finite progress")
+                    raise RuntimeError("merl proxy must return bounded finite progress")
                 record = {key: token_data[key].detach().cpu()[:, None]
                           for key in ("responses", "input_ids", "attention_mask", "pixel_values")}
                 records.append(record)
@@ -80,7 +80,7 @@ def generate_imagination(rollout, prompts):
                 elapsed += count
                 depth += 1
             # Keep generated observations for public comparison workflows.
-            directory = prompts.meta_info.get("paper_imagination_dir")
+            directory = prompts.meta_info.get("imagination_export_dir")
             if directory:
                 name = hashlib.sha256(f"{candidate_id}/{sample}".encode()).hexdigest()[:12]
                 save_episode(Path(directory) / f"stage_{stage:06d}" / name, frames,
@@ -88,13 +88,13 @@ def generate_imagination(rollout, prompts):
                                   valid=True, observation_source="world_model", stage=stage,
                                   simulator_revision=revision, anchor_id=anchor_id, candidate_id=candidate_id, proxy_only=True,
                                   environment_steps=0, imagined_steps=horizon,
-                                  label=prompts.meta_info.get("paper_mode", "MERL")),
+                                  label=prompts.meta_info.get("train_mode", "MERL")),
                              executed_actions=executed)
     if not records:
-        raise RuntimeError("paper imagination returned no valid chunks")
+        raise RuntimeError("merl imagination returned no valid chunks")
     tensors = {key: torch.cat([row[key] for row in records], 0) for key in records[0]}
     n = len(records)
     tensors.update(finish_step=torch.tensor(lengths), valid_response_tokens=torch.tensor(lengths) * 7,
-                   paper_score=torch.tensor(scores), paper_depth=torch.tensor(depths),
-                   paper_residuals=torch.stack(residuals), is_wm=torch.ones(n), is_weight=torch.ones(n))
-    return DataProto.from_dict(tensors=tensors, non_tensors={"paper_group": np.asarray(groups, dtype=object)})
+                   proxy_score=torch.tensor(scores), rollout_depth=torch.tensor(depths),
+                   predicted_residuals=torch.stack(residuals), is_wm=torch.ones(n), is_weight=torch.ones(n))
+    return DataProto.from_dict(tensors=tensors, non_tensors={"candidate_group": np.asarray(groups, dtype=object)})

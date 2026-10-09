@@ -94,26 +94,26 @@ ALIASES = {
     ),
 }
 
-PAPER_SR_AUC_KEYS = (
-    "paper_metrics/eval_success_rate_all_sr",
-    "paper_metrics/eval_success_rate_all_auc",
-    "paper_metrics/rollout_real_success_rate_sr",
-    "paper_metrics/rollout_real_success_rate_auc",
+LEARNING_SR_AUC_KEYS = (
+    "learning_metrics/eval_success_rate_all_sr",
+    "learning_metrics/eval_success_rate_all_auc",
+    "learning_metrics/rollout_real_success_rate_sr",
+    "learning_metrics/rollout_real_success_rate_auc",
 )
 
-PAPER_R2T_KEYS = (
-    "paper_metrics/eval_success_rate_all_r2t_0p3",
-    "paper_metrics/eval_success_rate_all_r2t_0p4",
-    "paper_metrics/rollout_real_success_rate_r2t_0p3",
-    "paper_metrics/rollout_real_success_rate_r2t_0p4",
+LEARNING_R2T_KEYS = (
+    "learning_metrics/eval_success_rate_all_r2t_0p3",
+    "learning_metrics/eval_success_rate_all_r2t_0p4",
+    "learning_metrics/rollout_real_success_rate_r2t_0p3",
+    "learning_metrics/rollout_real_success_rate_r2t_0p4",
 )
 
 
 PRESETS: Mapping[str, OrderedDict[str, Sequence[str]]] = {
     "merl": OrderedDict(
         [
-            ("00_paper_sr_auc", PAPER_SR_AUC_KEYS),
-            ("00b_paper_r2t", PAPER_R2T_KEYS),
+            ("00_learning_sr_auc", LEARNING_SR_AUC_KEYS),
+            ("00b_learning_r2t", LEARNING_R2T_KEYS),
             (
                 "01_policy_success_rate",
                 (
@@ -414,8 +414,8 @@ PRESETS: Mapping[str, OrderedDict[str, Sequence[str]]] = {
     ),
     "mbrl": OrderedDict(
         [
-            ("00_paper_sr_auc", PAPER_SR_AUC_KEYS),
-            ("00b_paper_r2t", PAPER_R2T_KEYS),
+            ("00_learning_sr_auc", LEARNING_SR_AUC_KEYS),
+            ("00b_learning_r2t", LEARNING_R2T_KEYS),
             (
                 "01_policy_success_rate",
                 (
@@ -562,8 +562,8 @@ PRESETS: Mapping[str, OrderedDict[str, Sequence[str]]] = {
     ),
     "mfrl": OrderedDict(
         [
-            ("00_paper_sr_auc", PAPER_SR_AUC_KEYS),
-            ("00b_paper_r2t", PAPER_R2T_KEYS),
+            ("00_learning_sr_auc", LEARNING_SR_AUC_KEYS),
+            ("00b_learning_r2t", LEARNING_R2T_KEYS),
             (
                 "01_policy_success_rate",
                 (
@@ -666,12 +666,12 @@ PRESET_X_KEYS: Mapping[str, str] = {
 PLOT_GUIDE = OrderedDict(
     [
         (
-            "00_paper_sr_auc",
-            "Paper-table metrics: SR is the current success rate, AUC is trapezoidal area under SR over cumulative real samples, and R2T is the first real-sample budget reaching the target SR threshold.",
+            "00_learning_sr_auc",
+            "Learning-curve metrics: SR is the current success rate, AUC is trapezoidal area under SR over cumulative real samples, and R2T is the first real-sample budget reaching the target SR threshold.",
         ),
         (
-            "00b_paper_r2t",
-            "Paper-table R2T metrics over cumulative real samples. A lower first-hit real-sample budget is better.",
+            "00b_learning_r2t",
+            "Learning-curve R2T metrics over cumulative real samples. A lower first-hit real-sample budget is better.",
         ),
         (
             "01_policy_success_rate",
@@ -1013,7 +1013,7 @@ def add_derived_metrics(
     )
     prev_scores: Dict[str, float] = {}
     prev_score_real_samples: Dict[str, float] = {}
-    paper_auc_state: Dict[str, Dict[str, object]] = {}
+    learning_auc_state: Dict[str, Dict[str, object]] = {}
     r2t_thresholds = (0.3, 0.4, 0.5)
     for step in steps:
         metrics = per_step[step]
@@ -1105,7 +1105,7 @@ def add_derived_metrics(
             score_value = first_finite_metric(metrics, score_keys)
             if not math.isfinite(score_value):
                 continue
-            paper_state = paper_auc_state.setdefault(
+            training_state = learning_auc_state.setdefault(
                 score_name,
                 {
                     "first_real": math.nan,
@@ -1116,37 +1116,37 @@ def add_derived_metrics(
                 },
             )
             if cum_real_env_samples > 0:
-                first_real = float(paper_state["first_real"])
-                prev_real = float(paper_state["prev_real"])
-                prev_score = float(paper_state["prev_score"])
+                first_real = float(training_state["first_real"])
+                prev_real = float(training_state["prev_real"])
+                prev_score = float(training_state["prev_score"])
                 if not math.isfinite(first_real):
-                    paper_state["first_real"] = cum_real_env_samples
-                    paper_state["prev_real"] = cum_real_env_samples
-                    paper_state["prev_score"] = score_value
+                    training_state["first_real"] = cum_real_env_samples
+                    training_state["prev_real"] = cum_real_env_samples
+                    training_state["prev_score"] = score_value
                 else:
                     delta_real_for_auc = cum_real_env_samples - prev_real
                     if delta_real_for_auc > 0 and math.isfinite(prev_score):
-                        paper_state["area"] = float(paper_state["area"]) + (
+                        training_state["area"] = float(training_state["area"]) + (
                             0.5 * (prev_score + score_value) * delta_real_for_auc
                         )
-                    paper_state["prev_real"] = cum_real_env_samples
-                    paper_state["prev_score"] = score_value
+                    training_state["prev_real"] = cum_real_env_samples
+                    training_state["prev_score"] = score_value
 
-                denom = cum_real_env_samples - float(paper_state["first_real"])
+                denom = cum_real_env_samples - float(training_state["first_real"])
                 auc_value = (
-                    float(paper_state["area"]) / denom
+                    float(training_state["area"]) / denom
                     if denom > 0
                     else score_value
                 )
-                metrics[f"paper_metrics/{score_name}_sr"] = score_value
-                metrics[f"paper_metrics/{score_name}_sr_pct"] = score_value * 100.0
-                metrics[f"paper_metrics/{score_name}_auc"] = auc_value
-                metrics[f"paper_metrics/{score_name}_auc_pct"] = auc_value * 100.0
+                metrics[f"learning_metrics/{score_name}_sr"] = score_value
+                metrics[f"learning_metrics/{score_name}_sr_pct"] = score_value * 100.0
+                metrics[f"learning_metrics/{score_name}_auc"] = auc_value
+                metrics[f"learning_metrics/{score_name}_auc_pct"] = auc_value * 100.0
 
-                r2t_state = paper_state["r2t"]
+                r2t_state = training_state["r2t"]
                 if not isinstance(r2t_state, dict):
                     r2t_state = {}
-                    paper_state["r2t"] = r2t_state
+                    training_state["r2t"] = r2t_state
                 for eta in r2t_thresholds:
                     r2t_state.setdefault(eta, math.nan)
                     if (
@@ -1157,7 +1157,7 @@ def add_derived_metrics(
                     if math.isfinite(float(r2t_state[eta])):
                         eta_label = str(eta).replace(".", "p")
                         metrics[
-                            f"paper_metrics/{score_name}_r2t_{eta_label}"
+                            f"learning_metrics/{score_name}_r2t_{eta_label}"
                         ] = float(r2t_state[eta])
             if cum_real_env_samples > 0:
                 metrics[
@@ -1664,7 +1664,7 @@ def write_plot_guide(
 
         handle.write("## Core Comparison Metrics\n\n")
         handle.write(
-            "- Paper table metrics: `00_paper_sr_auc.*` and `00b_paper_r2t.*` report SR, AUC, and R2T over cumulative real samples. SR/AUC curves are kept in 0-1 units; `*_pct` columns in `merged_metrics.csv` are percentage points.\n"
+            "- Learning-curve metrics: `00_learning_sr_auc.*` and `00b_learning_r2t.*` report SR, AUC, and R2T over cumulative real samples. SR/AUC curves are kept in 0-1 units; `*_pct` columns in `merged_metrics.csv` are percentage points.\n"
             "- True success rate: `01_policy_success_rate.*` and auto `val/success_rate/*` plots. Old `val/test_score/*` is used only as a fallback for historical logs.\n"
             "- Training reward: `01b_train_reward.*`, where `train_reward/main` is the PPO reward actually optimized.\n"
             "- Success vs real-sample budget: `02_success_vs_real_samples.*`.\n"
@@ -1760,8 +1760,8 @@ def metric_auto_group_name(key: str) -> str:
         return f"10_auto_val_{sanitize_filename(parts[1])}" if len(parts) > 1 else "10_auto_val"
     if key.startswith("sample_efficiency/"):
         return "05_auto_sample_efficiency"
-    if key.startswith("paper_metrics/"):
-        return "00_auto_paper_metrics"
+    if key.startswith("learning_metrics/"):
+        return "00_auto_learning_metrics"
     if key.startswith("wm/eval/full/"):
         return "45_auto_wm_eval_full"
     if key.startswith("wm/eval/"):

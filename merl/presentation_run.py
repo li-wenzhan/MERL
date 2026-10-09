@@ -14,33 +14,12 @@ from merl.launch import ROOT, digest
 from merl.modes import MODES
 
 
-def training_overrides(steps, seconds, protocol="camera-ready"):
-    # Explicit pilot settings shared across modes; not paper-reproduction settings.
-    if protocol == "camera-ready":
-        return [f"trainer.max_training_seconds={seconds}", "trainer.save_freq=1",
-                "trainer.paper_checkpoint_keep=1",
-                "trainer.test_freq=1000000", "trainer.final_val_after_train=true",
-                "paper.simulator_steps=2", "actor_rollout_ref.world_model.num_inference_steps=8"]
-    return [f"trainer.total_training_steps={steps}", f"trainer.total_epochs={steps}",
-            f"trainer.max_training_seconds={seconds}", "trainer.save_freq=1",
-            "trainer.test_freq=1000000", "trainer.final_val_after_train=true",
-            "data.n_samples=2", "data.filter_accuracy=false",
-            "actor_rollout_ref.model.checkpoint_format=hf_full_state_dict",
-            "actor_rollout_ref.actor.optim.lr=0.000005",
-            "actor_rollout_ref.actor.ppo_mini_batch_size=6",
-            "actor_rollout_ref.actor.traj_mini_batch_size=6",
-            "actor_rollout_ref.actor.clip_ratio_high=0.2",
-            "actor_rollout_ref.actor.clip_ratio_low=0.2",
-            "actor_rollout_ref.rollout.temperature=1.0",
-            "actor_rollout_ref.rollout.train_max_steps=384",
-            "actor_rollout_ref.world_model.wm_inner_steps=2",
-            "actor_rollout_ref.world_model.save_freq_wm_outer=1",
-            "actor_rollout_ref.world_model.save_freq_wm_inner=1",
-            "actor_rollout_ref.world_model.wm_warmup_steps=1",
-            "actor_rollout_ref.world_model.num_inference_steps=8",
-            "actor_rollout_ref.world_model.eval_num_inference_steps=8",
-            "actor_rollout_ref.world_model.imag_horizon_min=64",
-            "actor_rollout_ref.world_model.imag_horizon_max=128"]
+def training_overrides(steps, seconds):
+    """Use the same training budget for every selected mode."""
+    return [f"trainer.max_training_seconds={seconds}", "trainer.save_freq=1",
+            "trainer.checkpoint_keep=1", "trainer.test_freq=1000000",
+            "trainer.final_val_after_train=true", "merl.simulator_steps=2",
+            "actor_rollout_ref.world_model.num_inference_steps=8"]
 
 
 def protocol_for(config, task_ids, trials, horizon, eval_offset=10):
@@ -70,12 +49,12 @@ def main():
     p.add_argument("--modes", nargs="+", choices=MODES, help="Explicit sequential subset; use instead of --mode")
     p.add_argument("--continue-on-error", action="store_true", help="Attempt remaining modes after a failure")
     p.add_argument("--job", choices=("train", "evaluate"), default="train")
-    p.add_argument("--protocol", choices=("camera-ready", "legacy"), default="camera-ready")
-    p.add_argument("--paper-config", type=Path, default=ROOT / "configs/camera_ready.json")
+    p.add_argument("--config", type=Path, default=ROOT / "configs/merl.json")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--actor-checkpoint", type=Path, help="Sharded camera-ready actor to evaluate")
+    p.add_argument("--actor-checkpoint", type=Path, help="Sharded MERL actor to evaluate")
     p.add_argument("--label", help="Evaluation label, e.g. SFT; never changes the policy")
-    p.add_argument("--sft-checkpoint", type=Path, required=True)
+    p.add_argument("--vla-init", "--sft-checkpoint", dest="sft_checkpoint", type=Path, required=True)
+    p.add_argument("--unnorm-key", help="Action statistics key used by the initialization")
     p.add_argument("--wm-checkpoint", type=Path)
     p.add_argument("--output", type=Path)
     p.add_argument("--tasks", type=int, nargs="+", default=[0])
@@ -106,7 +85,7 @@ def main():
         p.error("An explicit WM checkpoint is required")
     if args.job == "train" and len(args.tasks) * args.trials < args.actor_gpus:
         p.error("The training panel must contain at least one prompt per actor GPU")
-    root = (args.output or ROOT / "tmp_files/ppt_runs" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")).resolve()
+    root = (args.output or ROOT / "outputs/comparisons" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")).resolve()
     root.mkdir(parents=True, exist_ok=False)
     protocol = protocol_for(args.eval_config.resolve(), args.tasks, args.trials, 512, args.eval_offset)
     (root / "protocol.json").write_text(json.dumps(protocol, indent=2) + "\n")
@@ -125,15 +104,15 @@ def main():
                      f"actor_rollout_ref.rollout.presentation_protocol={json.dumps(protocol['id'])}",
                      f"actor_rollout_ref.rollout.presentation_label={json.dumps(label)}"]
         if args.job == "train":
-            overrides += training_overrides(args.steps, args.training_minutes * 60, args.protocol)
-            if mode == "ONLINE_MBRL" and args.protocol == "legacy":
-                overrides += ["actor_rollout_ref.world_model.wm_warmup_steps=0"]
+            overrides += training_overrides(args.steps, args.training_minutes * 60)
         command = [sys.executable, "-u", "-m", "merl.launch", "--mode", mode, "--job", args.job,
                    "--experiment", experiment, "--sft-checkpoint", str(args.sft_checkpoint.resolve()),
                    "--eval-config", str(args.eval_config.resolve()), "--output-root", str(root / "runs"),
                    "--actor-gpus", str(args.actor_gpus), "--trials", str(args.trials),
-                   "--protocol", args.protocol, "--stages", str(args.steps), "--seed", str(args.seed),
-                   "--paper-config", str(args.paper_config.resolve())]
+                   "--stages", str(args.steps), "--seed", str(args.seed),
+                   "--config", str(args.config.resolve())]
+        if args.unnorm_key:
+            command += ["--unnorm-key", args.unnorm_key]
         if args.actor_checkpoint:
             command += ["--actor-checkpoint", str(args.actor_checkpoint.resolve())]
         if args.wm_checkpoint and mode != "MFRL" and args.job == "train":
@@ -144,8 +123,7 @@ def main():
                     experiment_dir=str(root / "runs" / mode / experiment),
                     source_hashes={str(path.relative_to(ROOT)): digest(path) for path in
                                    (ROOT / "merl/presentation_run.py", ROOT / "merl/presentation_report.py")},
-                    training_protocol=args.protocol,
-                    caveat="Short-budget exploratory run; no guarantee of method ranking or paper reproduction.")
+                    training_stages=args.steps, training_minutes=args.training_minutes)
         info_path = folder / "run_info.json"
         info_path.write_text(json.dumps(info, indent=2) + "\n")
         started = time.monotonic()

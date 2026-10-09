@@ -10,13 +10,8 @@ _CTRL_WORLD_SAMPLE_JSON_DIR = str(
     _REPO_ROOT / "modules" / "ctrl_world" / "dataset" / "libero"
 )
 
-# MERL memory patch:
-# 1. Default full WM eval sample count is bounded for 100-step debug runs.
-# 2. Scripts can still override this value through Hydra.
-# ! Reader checklist:
-# ! 1) Set svd_model_path / clip_model_path to your local backbone directories.
-# ! 2) Set ckpt_path only if you want to warm-start WM from an existing checkpoint.
-# ! 3) Set dataset_sample_json_dir to the LIBERO sample-json directory used by Ctrl-World.
+# Backbones are configured with MERL_SVD_MODEL_PATH and MERL_CLIP_MODEL_PATH.
+# Pass initialization weights and output locations through the training CLI.
 
 
 @dataclass
@@ -55,7 +50,7 @@ class wm_args:
     # logs parameters
     debug: bool = False
     tag: str = (
-        "libero_all_with_rm_online"  # ! todo: rename this run tag so checkpoints/logs are written to your own experiment directory
+        "libero_all_with_rm_online"
     )
     output_dir: str = field(init=False)
     wandb_run_name: str = field(init=False)
@@ -84,7 +79,7 @@ class wm_args:
     motion_bucket_id: int = 127
     fps: int = 4
     guidance_scale: float = 2
-    num_inference_steps: int = 30  # Reduced from 50 for the legacy speed/quality tradeoff.
+    num_inference_steps: int = 30
     decode_chunk_size: int = 8
     width: int = 320
     height: int = 192
@@ -97,7 +92,7 @@ class wm_args:
     reward_threshold: float = 0.5
     fixed_eval_enabled: bool = False
     fixed_eval_root: str = (
-        ""  # ! todo: set by the launcher to ./tmp_files/wm_eval_shared/<dataset_name>
+        ""
     )
     fixed_eval_global_steps: int = 0
     fixed_eval_mini_split: str = "wm_eval_fixed_mini"

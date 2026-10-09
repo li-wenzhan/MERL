@@ -8,14 +8,14 @@ import numpy as np
 import torch
 
 from merl.checkpoint import atomic_save, rng_state, restore_rng
-from merl.paper import (PaperConfig, branch_coefficients, clipped_chunk_loss, grouped_advantages,
+from merl.algorithm import (MERLConfig, branch_coefficients, clipped_chunk_loss, grouped_advantages,
                         load_grounded_trajectory, save_grounded_trajectory)
 from merl.proxy import soft_progress_loss
 
 
-class PaperTests(unittest.TestCase):
+class AlgorithmTests(unittest.TestCase):
     def test_equal_grounded_budget_and_independent_controls(self):
-        config = PaperConfig()
+        config = MERLConfig()
         self.assertEqual(config.grounded_trajectories * config.grounded_step_cap, 3072)
         for mode in ("MBRL", "ONLINE_MBRL", "MFRL"):
             self.assertFalse(config.for_mode(mode).stage_trust)
@@ -31,7 +31,7 @@ class PaperTests(unittest.TestCase):
             path = save_grounded_trajectory(Path(root) / "episode.npz", observations=observations,
                                              executed_actions=np.ones((3, 7)), instruction="place", success=True,
                                              task_id=0, trial_id=0, stage=1)
-            item = load_grounded_trajectory(path, dataclasses.replace(PaperConfig(), proxy_discount=.5))
+            item = load_grounded_trajectory(path, dataclasses.replace(MERLConfig(), proxy_discount=.5))
             torch.testing.assert_close(item.target_proxy, torch.tensor([.25, .5, 1.]))
             self.assertEqual(item.observations.shape[0], item.actions.shape[0] + 1)
             with self.assertRaises(ValueError):
@@ -48,7 +48,7 @@ class PaperTests(unittest.TestCase):
         torch.testing.assert_close(logits.grad, torch.tensor([[[-.25, .25], [0., 0.]]]))
         self.assertAlmostEqual(float(loss), np.log(2), places=6)
 
-    def test_global_mixed_chunk_gradient_matches_paper_despite_unequal_counts(self):
+    def test_global_mixed_chunk_gradient_matches_objective_despite_unequal_counts(self):
         new = torch.zeros(5, 3, requires_grad=True)
         old = torch.zeros_like(new)
         advantages = torch.tensor([[1., 1., 999.], [-1., -1., 999.],
@@ -74,7 +74,7 @@ class PaperTests(unittest.TestCase):
                                torch.ones(1, 1, dtype=torch.bool), .2, .2)
 
     def test_checkpoint_retention_protects_preexisting_and_outside_files(self):
-        from merl.paper_trainer import prune_owned_checkpoints
+        from merl.trainer import prune_owned_checkpoints
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder) / "new_run"
             owned = []
@@ -82,7 +82,7 @@ class PaperTests(unittest.TestCase):
                 actor = root / "actor" / f"global_step_{stage}"
                 actor.mkdir(parents=True)
                 (actor / "tensor.pt").write_text("owned")
-                state = root / "paper_state" / f"completed_stage_{stage}.pt"
+                state = root / "training_state" / f"completed_stage_{stage}.pt"
                 state.parent.mkdir(exist_ok=True)
                 state.write_text("complete")
                 owned.append((str(actor), None, str(state)))

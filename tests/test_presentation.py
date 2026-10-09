@@ -38,8 +38,9 @@ class PresentationTests(unittest.TestCase):
                 self.assertIn("actor_rollout_ref.rollout.eval_max_steps=512", info["command"])
                 self.assertIn("data.eval_trial_offset=10", info["command"])
                 self.assertIn("trainer.max_training_seconds=900", info["command"])
-                self.assertIn("camera-ready", info["command"])
-                self.assertIn("paper.simulator_steps=2", info["command"])
+                self.assertIn("--config", info["command"])
+                self.assertNotIn("--protocol", info["command"])
+                self.assertIn("merl.simulator_steps=2", info["command"])
                 self.assertNotIn("actor_rollout_ref.world_model.imag_horizon_min=64", info["command"])
 
     def test_failed_mode_stops_remaining_modes_by_default(self):

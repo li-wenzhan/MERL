@@ -1278,8 +1278,8 @@ class RobDataParallelPPOActor(BasePPOActor):
         return metrics
 
     def update_policy(self, data: DataProto):
-        if data.meta_info.get("paper_objective", False):
-            return self.update_paper_policy(data)
+        if data.meta_info.get("chunk_objective", False):
+            return self.update_chunk_policy(data)
         self.actor_module.train()
 
         assert self.config.ppo_mini_batch_size % self.config.ppo_micro_batch_size == 0
@@ -2043,11 +2043,11 @@ class RobDataParallelPPOActor(BasePPOActor):
         torch.cuda.empty_cache()
         return metrics
 
-    def update_paper_policy(self, data: DataProto):
+    def update_chunk_policy(self, data: DataProto):
         """One outer-stage update with global CHUNK branch normalization."""
-        from merl.paper import clipped_chunk_loss
+        from merl.algorithm import clipped_chunk_loss
         if data.batch["responses"].shape[1] != 1:
-            raise ValueError("camera-ready actor updates require one chunk per sample")
+            raise ValueError("MERL actor updates require one chunk per sample")
         self.pad_token_id = data.meta_info["pad_token_id"]
         self.actor_module.train()
         self.actor_optimizer.zero_grad(set_to_none=True)
@@ -2062,7 +2062,7 @@ class RobDataParallelPPOActor(BasePPOActor):
             mask = torch.arange(logp.shape[-1], device=logp.device)[None] < row["valid_response_tokens"][:, None]
             terms = clipped_chunk_loss(logp, row["old_log_probs"], row["advantages"], mask,
                                        self.config.clip_ratio_low, self.config.clip_ratio_high)
-            loss = (terms * row["paper_coefficient"]).sum()
+            loss = (terms * row["branch_coefficient"]).sum()
             # FSDP averages gradients over ranks; coefficients already use the
             # global branch counts, so undo this averaging exactly once.
             (world * loss).backward()
@@ -2072,7 +2072,7 @@ class RobDataParallelPPOActor(BasePPOActor):
         if dist.is_initialized():
             dist.all_reduce(total)
         return {"actor/pg_loss": [float(total)], "actor/grad_norm": [float(norm)],
-                "actor/paper_valid_chunks": [len(data)], "actor/optimizer_updates": [1]}
+                "actor/valid_chunks": [len(data)], "actor/optimizer_updates": [1]}
 
     def compute_entropy(self, bacth_data: DataProto):
 

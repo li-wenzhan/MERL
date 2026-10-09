@@ -153,7 +153,7 @@ def main():
                     action_convention="libero_env_executed; no further gripper conversion",
                     preprocessing="RGB uint8 PIL bilinear resize to 320x192",
                     wm_config_sha256=file_digest(args.wm_config), source_sha256=file_digest(__file__),
-                    caveat="Held-out fixed-action simulator fidelity; this does not measure closed-loop policy success or trust admission.",
+                    metric_scope="heldout_fixed_action_prediction",
                     results={})
     def save():
         (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

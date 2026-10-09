@@ -1152,6 +1152,7 @@ class RayTrainer(object):
                 num_trials_per_task=self.config.data.num_trials_per_task,
                 train_val="rollout",
                 task_ids=getattr(rollout_cfg, "allowed_task_ids", None),
+                trial_offset=int(self.config.data.get("rollout_trial_offset", 0)),
             )
 
         elif "robotwin" in self.config.data.task_suite_name:
@@ -5240,7 +5241,7 @@ class RayTrainer(object):
                 (
                     "rollout/real_success_rate",
                     "rollout/success_rate",
-                    "paper_metrics/rollout_real_success_rate_sr",
+                    "learning_metrics/rollout_real_success_rate_sr",
                 ),
                 default=float("nan"),
             )

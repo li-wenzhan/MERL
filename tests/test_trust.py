@@ -79,7 +79,7 @@ class TrustTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             dataclasses.replace(self.batch.features, actions=broken).matrix()
 
-    def test_priority_and_weight_match_paper(self):
+    def test_priority_and_weight_match_formulas(self):
         r = torch.tensor([[0., 0.], [0.5, 0.5], [1., 1.]])
         cfg = TrustConfig(priority_epsilon=0.1, priority_exponent=2, weight_eta=3)
         scores = trust_scores(r, cfg)

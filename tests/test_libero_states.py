@@ -15,6 +15,20 @@ class UnsupportedState:
 
 
 class LiberoStatesTests(unittest.TestCase):
+    def test_original_numpy_only_zip_version_three_protocol_two(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "original.pruned_init"
+            states = [np.arange(12, dtype=np.float64), np.full(12, 2, dtype=np.float64)]
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("archive/data.pkl", pickle.dumps(states, protocol=2))
+                archive.writestr("archive/version", b"3\n")
+            np.testing.assert_array_equal(load_init_states(path), states)
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("archive/data.pkl", pickle.dumps(states, protocol=2))
+                archive.writestr("archive/version", b"99\n")
+            with self.assertRaisesRegex(ValueError, "archive version"):
+                load_init_states(path)
+
     def test_generated_protocol_four_zip_and_rejected_globals(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "generated.pruned_init"

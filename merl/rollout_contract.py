@@ -1,4 +1,4 @@
-"""Small action-chunk/token boundary helpers shared with the legacy rollout."""
+"""Small action-chunk/token boundary helpers shared with policy rollout."""
 
 import torch
 from torch import Tensor

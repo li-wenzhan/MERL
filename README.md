@@ -1,7 +1,6 @@
 <div align="center">
 
-# MERL
-### Trust-Calibrated VLA Policy Post-Training with Evolving Imagination
+# Trust-Calibrated VLA Policy Post-Training with Evolving Imagination
 
 <p>
   Wenzhan Li<sup>1,2</sup> &nbsp; Yiran Qin<sup>3,4</sup> &nbsp; Heng Zhou<sup>4,5</sup><br>
@@ -35,160 +34,181 @@
 
 ## Overview
 
-An online-updated simulator can still produce unreliable futures as the policy changes. MERL calibrates that uncertainty on stored grounded experience and uses a frozen residual predictor to score recursive imagination without querying future environment states.
+MERL uses grounded experience to improve both its policy and its simulator. It calibrates visual and progress errors on stored trajectories, then estimates the reliability of new imagined chunks with a frozen residual predictor. This supports recursive imagination as the policy changes, while concentrating policy updates on reliable experience.
 
-This release contains MERL and its component controls, built around tokenized **OpenVLA-OFT**, **Ctrl-World**, **LIBERO-PRO**, Ray and FSDP. The default `camera-ready` protocol follows the final paper's mechanism and data contracts. `--protocol legacy` retains earlier debugging workflows for inspecting historical artifacts.
-
-**Implementation and reproduced results are separate.** This release implements the final-paper lifecycle. Original experiment checkpoints and complete original hyperparameter records are not bundled; the paper's numerical results have not been reproduced with this release. See the [implementation audit](docs/implementation_audit.md) for verified behavior, explicit engineering defaults and remaining runtime gates.
+The implementation combines tokenized **OpenVLA-OFT**, **Ctrl-World**, **LIBERO-PRO**, Ray and FSDP. This repository provides the training loop, component controls, evaluation, resumable checkpoints, and tools for robot videos and simulator comparisons.
 
 ## Method
 
 <div align="center">
-  <img src="assets/merl_overview.svg" width="100%" alt="MERL: grounded collection, simulator update, stored calibration, recursive imagination and independently normalized policy update">
+  <img src="assets/merl_overview.png" width="100%" alt="MERL: policy rollout, stored grounded-imagined calibration, stage-level trust, chunk-level trust and mixed optimization">
 </div>
 
-Each refinement stage follows five steps:
+The five panels above describe each refinement stage:
 
-1. **Collect grounded experience:** six current-policy trajectories, each capped at 512 executed actions. Store `T+1` observations for `T` actions, including the executed gripper convention.
-2. **Update the simulator:** train the visual world model and soft binary reward proxy on grounded data. The proxy estimates truncated success-to-go from the observation **before** an action.
-3. **Calibrate from stored windows:** replay exact recorded actions for depths 1–4; no extra environment interaction. Refresh and freeze the residual predictor, then schedule the mixture ratio and horizon from measured reliability.
-4. **Imagine recursively:** query the policy on the latest predicted RGB observation. Score candidates using predicted residuals, sample low-error chunks preferentially, and apply detached trust weights.
-5. **Refine the policy:** compute categorical action-token ratios; sum valid token losses within each chunk and normalize real and imagined branches independently by chunk count.
+1. **Policy rollout.** Collect six grounded trajectories with the current VLA policy. Decode and denormalize categorical tokens into 8-step, 7-dimensional action chunks; store the executed commands with their preceding and resulting RGB observations.
+2. **Stored grounded-imagined calibration.** Update the world model and progress proxy on stored grounded windows. Replay the same recorded actions to obtain matched predictions and residual targets, then refresh the residual predictor. Calibration uses the stored observations and masks without additional environment interaction.
+3. **Stage-level trust.** Smooth the measured visual and proxy errors to schedule the real–imagined mixture ratio and the imagination horizon, between 8 and 32 environment steps.
+4. **Chunk-level trust.** Re-query the policy on predicted RGB observations to imagine recursively. The frozen predictor estimates visual and proxy residuals from the anchor, imagined latents, executed actions, rollout depth and stage context. These errors determine replay probabilities and detached trust weights; partial chunks retain explicit masks.
+5. **Mixed optimization.** Sample real and imagined chunks independently, then optimize `(1 − ρ) L_real + ρ L_imag`. Categorical token losses are summed within each valid chunk; the two branches are normalized by their own chunk counts. The simulator, proxy and residual predictor stay frozen during this policy update.
 
-The implementation uses 8-step, 7-dimensional action chunks and imagination horizons of 8–32 **environment steps**. Partial final chunks retain explicit masks. Simulator updates/calibration precede imagination; the simulator and residual predictor remain frozen during the policy update.
-
-| Mode | Simulator | Stage scheduling | Chunk replay / weighting | Policy data |
+| Mode | Simulator | Stage scheduling | Imagined chunk sampling / weighting | Policy data |
 | :--- | :--- | :--- | :--- | :--- |
-| `MFRL` | Disabled | Disabled | Uniform real chunks | Real |
+| `MFRL` | Disabled | — | — | Real |
 | `MBRL` | Frozen | Fixed ratio / horizon | Uniform / unit weight | Real + imagined |
 | `STATIC_TRUST` | Frozen | Calibrated | Trust priority / weight | Real + imagined |
 | `ONLINE_MBRL` | Online updated | Fixed ratio / horizon | Uniform / unit weight | Real + imagined |
 | `MERL` | Online updated | Calibrated | Trust priority / weight | Real + imagined |
 
-All controls share the grounded allowance, actor optimizer, action interface and evaluation path. These controls are not renamed implementations of external algorithms. Details and equation-to-code pointers: [camera-ready protocol](docs/camera_ready_protocol.md) and [no-oracle trust](docs/no_oracle_trust.md).
+All modes share the grounded budget, actor optimizer, action representation and evaluation interface. See [training details](docs/training.md) and [no-oracle trust](docs/no_oracle_trust.md).
 
 ## Installation
 
-Use **Linux, Python 3.10, a compatible CUDA PyTorch/torchvision pair, NCCL, headless EGL and ffmpeg**. The reference allocation is one node with **4 × H100 80 GB**: three actor GPUs and one simulator GPU. MFRL uses the same three actor GPUs. Evaluation and stored-action WM visualization can use one GPU.
+Use **Linux, Python 3.10, CUDA PyTorch/torchvision, NCCL, EGL and ffmpeg**. Policy training uses three actor GPUs; model-based modes add a fourth GPU for the shared simulator. A node with **4 × H100 80 GB** supports this layout. Simulator initialization and video comparison use one GPU.
 
 ```bash
 python3.10 -m venv .venv
 source .venv/bin/activate
-# Install a matching CUDA PyTorch/torchvision build for your host first.
+# Install the CUDA PyTorch/torchvision pair for your host, then:
 python -m pip install -r requirements.txt
 ```
 
-The development environment snapshot is in [configs/tested_runtime.json](configs/tested_runtime.json). It records an existing validated environment; it is not a complete dependency lock or a claim that every CUDA build has been tested. OpenVLA-OFT uses eager attention in this repository; FlashAttention is optional for other backbones.
+[Runtime versions](configs/runtime_versions.json) and [runtime setup](docs/runtime.md) provide dependency and headless-rendering details. OpenVLA-OFT uses eager attention in this implementation.
 
-Prepare these **local** assets before running an offline job:
-
-| Asset | Required contents / configuration |
-| :--- | :--- |
-| OpenVLA-OFT SFT | Sharded model, tokenizer/processor, configuration and `dataset_statistics.json`; pass `--sft-checkpoint` |
-| Ctrl-World | Complete trained simulator state; pass `--wm-checkpoint` for model-based training |
-| SVD backbone | Local Stable Video Diffusion directory; set `MERL_SVD_MODEL_PATH` |
-| CLIP backbone | Local CLIP directory; set `MERL_CLIP_MODEL_PATH` |
-| [LIBERO-PRO](https://github.com/Zxy-MLlab/LIBERO-PRO) | Checkout, robot assets, selected BDDL tasks and matching initial states; set `LIBERO_PRO_ROOT` |
+Prepare the [LIBERO-PRO](https://github.com/Zxy-MLlab/LIBERO-PRO) checkout and local [SVD](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid) and [CLIP](https://huggingface.co/openai/clip-vit-base-patch32) backbones before training:
 
 ```bash
 export LIBERO_PRO_ROOT=/benchmark/LIBERO-PRO
 export MERL_SVD_MODEL_PATH=/models/stable-video-diffusion-img2vid
 export MERL_CLIP_MODEL_PATH=/models/clip-vit-base-patch32
-export SFT_CHECKPOINT=/models/openvla-oft
-export WM_CHECKPOINT=/models/ctrl-world.pt
+export TORCH_HOME=/models/torch
+# Cache the ImageNet initialization for the progress proxy during asset preparation.
+python -c 'from torchvision.models import resnet18, ResNet18_Weights; resnet18(weights=ResNet18_Weights.DEFAULT)'
 ```
 
-`configs/evaluation_config.yaml` selects perturbations. Its default environment-shift panel requires prepared `libero_10_env` BDDL/init assets. Empty `libero_pro_root` uses `LIBERO_PRO_ROOT`. Freeze and reuse task/state files across methods; a directory name alone does not establish a meaningful distribution shift.
-
-**Online post-training from pretrained weights does not require demonstration HDF5 datasets.** Demonstrations are needed for SFT, offline simulator pretraining or physical-robot fixed-data adaptation. Held-out WM evaluation trajectories are collected separately and must never enter training/calibration.
+Online refinement collects its own experience. Demonstrations in RLDS format are needed when preparing the initial VLA policy; simulator initialization below uses locally collected trajectories. `configs/pretraining_config.yaml` selects the original tasks, while `configs/evaluation_config.yaml` selects environment perturbations. Prepare matching BDDL and initial-state assets for each selected panel.
 
 ## Training
 
-Use the same entrypoint for all five modes. An experiment name creates a **fresh** output directory; existing runs are never overwritten.
+Start a fresh training run with the following sequence. MERL policy checkpoints are generated locally by these commands.
+
+### 1. Prepare the VLA initialization
+
+Train a categorical action-chunk policy from the public OpenVLA base model using the [OpenVLA-OFT fine-tuning workflow](https://github.com/moojink/openvla-oft/blob/main/LIBERO.md). Select **discrete token prediction**, **one RGB image**, **no proprioception** and **8 × 7 actions**:
+
+```text
+--use_l1_regression False --use_diffusion False --use_film False
+--num_images_in_input 1 --use_proprio False
+```
+
+A complete command and checkpoint preparation steps are in [the initialization guide](docs/training.md#vla-initialization). Export the merged model with its tokenizer, processor and `dataset_statistics.json`, then set:
 
 ```bash
-# Check assets and compose configuration on the development machine.
-python -m merl.launch --mode MERL --experiment merl_assets \
-  --sft-checkpoint "$SFT_CHECKPOINT" --wm-checkpoint "$WM_CHECKPOINT" --check
+export VLA_INIT=/outputs/vla_init/merged_model
+export UNNORM_KEY=libero_10_no_noops
+```
 
-# Submit on a four-GPU node. No Git checks, downloads or package installs run here.
+### 2. Collect simulator training trajectories
+
+Collect real-environment trajectories with the initialized policy, without policy updates:
+
+```bash
+bash scripts/run_logged.sh python -m merl.launch \
+  --mode MFRL --job collect --experiment wm_data_seed0 \
+  --vla-init "$VLA_INIT" --unnorm-key "$UNNORM_KEY" \
+  --eval-config configs/pretraining_config.yaml --actor-gpus 1 --trials 6 \
+  --collection-dir data/wm_initialization --split wm_train
+```
+
+The NPZ files contain `T+1` RGB observations for `T` executed actions, task instructions and outcomes. Training and held-out evaluation collections use separate directories.
+
+### 3. Train the initial simulator and proxy
+
+Initialize from the public visual/text backbones and train on the collected trajectories:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 bash scripts/run_logged.sh python -m merl.train_simulator \
+  --data data/wm_initialization/wm_train/trajectories \
+  --output outputs/wm_init/seed0 --steps 5000 --save-every 500 --seed 0
+export WM_INIT="$PWD/outputs/wm_init/seed0/checkpoint-5000.pt"
+```
+
+The trainer saves model weights, optimizer and RNG state, trajectory hashes and loss curves. `--from-checkpoint` loads an existing simulator initialization; `--resume-from` restores a saved training state. See [simulator initialization](docs/training.md#simulator-initialization).
+
+### 4. Run policy refinement
+
+```bash
 bash scripts/run_logged.sh python -m merl.launch \
   --mode MERL --stages 100 --seed 0 --experiment merl_seed0 \
-  --sft-checkpoint "$SFT_CHECKPOINT" --wm-checkpoint "$WM_CHECKPOINT"
+  --vla-init "$VLA_INIT" --unnorm-key "$UNNORM_KEY" --wm-checkpoint "$WM_INIT"
 ```
 
-Select `--mode MFRL` without a WM checkpoint for the real-only control. Use `MBRL`, `STATIC_TRUST` or `ONLINE_MBRL` with the same initialization and task panel for the other controls. The paper reports approximately **35 hours for 100 stages** on its reference allocation; throughput of this release must be measured on your ACP node.
+Choose `MFRL`, `MBRL`, `STATIC_TRUST` or `ONLINE_MBRL` to run the component controls. MFRL requires only the VLA initialization. For comparisons, reuse the same initialization, task panel and seed schedule across modes.
 
-`configs/camera_ready.json` makes trust, calibration and batch choices explicit. Some values, including the residual MLP, pooling and fitting settings, are **engineering defaults where original records are unavailable**. Do not describe an untuned default run as an exact numerical reproduction. Extra Hydra overrides follow `--`:
+Algorithm settings live in [configs/merl.json](configs/merl.json). Additional Hydra overrides follow `--`, for example:
 
 ```bash
-# Mechanism ablation: keep evolution and stage scheduling, disable chunk trust.
-python -m merl.launch --mode MERL --stages 100 --seed 0 \
-  --experiment merl_no_chunk_trust \
-  --sft-checkpoint "$SFT_CHECKPOINT" --wm-checkpoint "$WM_CHECKPOINT" \
-  -- paper.chunk_trust=false
+# Disable chunk trust while retaining online evolution and stage scheduling.
+python -m merl.launch --mode MERL --experiment no_chunk_seed0 \
+  --vla-init "$VLA_INIT" --unnorm-key "$UNNORM_KEY" --wm-checkpoint "$WM_INIT" \
+  -- merl.chunk_trust=false
 ```
 
-### Checkpoints and resume
-
-Completed stages save actor shards, optimizer/scheduler state, RNGs, simulator state, residual predictor and stage EMA. Resume into a new experiment directory with the **same actor GPU layout and research configuration**:
+Completed checkpoints restore policy, simulator, optimizer, RNG, trust state and replay sampling state. Resume into a fresh experiment directory with an absolute target stage count:
 
 ```bash
-python -m merl.launch --mode MERL --stages 100 --seed 0 \
-  --experiment merl_seed0_resumed \
-  --sft-checkpoint "$SFT_CHECKPOINT" --wm-checkpoint "$WM_CHECKPOINT" \
-  --resume-from checkpoints/MERL/merl_seed0/paper_state/completed_stage_000050.pt
+python -m merl.launch --mode MERL --experiment merl_seed0_resumed --stages 100 \
+  --vla-init "$VLA_INIT" --unnorm-key "$UNNORM_KEY" --wm-checkpoint "$WM_INIT" \
+  --resume-from checkpoints/MERL/merl_seed0/training_state/completed_stage_000050.pt
 ```
-
-Only a published `completed_stage_*.pt` is resumable as a completed stage. Mid-stage resume is not supported. Actor checkpoints use FSDP sharded state; optimizer restoration requires the original rank count. GPU kernels and distributed scheduling can still introduce numerical nondeterminism.
-
-The default retains the latest two completed checkpoints created in the fresh run. `--checkpoint-keep 0` retains all. A resumed source run is never pruned. FP32 actor weights plus Adam moments alone occupy approximately 90 GB per saved stage; plan additional space for the simulator and the next checkpoint before retention runs.
 
 ## Evaluation and visualization
 
-### Real-environment policy evaluation
+### Closed-loop robot behavior
 
-Evaluate a saved actor against the same held-out task/state panel. `--sft-checkpoint` supplies the architecture, processor and action statistics; `--actor-checkpoint` supplies refined weights.
+Evaluate the saved actor on real simulator environments and export episode videos, keyframes, trajectories and success metrics:
 
 ```bash
 bash scripts/run_logged.sh python -m merl.launch \
-  --mode MERL --job evaluate --experiment merl_eval \
-  --sft-checkpoint "$SFT_CHECKPOINT" \
+  --mode MERL --job evaluate --experiment merl_eval_seed0 \
+  --vla-init "$VLA_INIT" --unnorm-key "$UNNORM_KEY" \
   --actor-checkpoint checkpoints/MERL/merl_seed0/actor/global_step_100 \
   --actor-gpus 3 --trials 6
 ```
 
-For initial SFT evaluation, omit `--actor-checkpoint` and use `--actor-gpus 1`. Greedy evaluation uses real environment success and a 512-action limit. Saved episodes contain MP4s, unaltered PNG keyframes, outcome metadata and lossless aligned `trajectory.npz`. Invalid episodes remain visible and cannot count as successful trials.
+FSDP checkpoint evaluation uses the same actor rank count as training. To evaluate the initialized policy on one GPU, omit `--actor-checkpoint` and use `--actor-gpus 1`.
 
-### Short comparative run
+For a compact sequential comparison on one four-GPU node:
 
 ```bash
-bash examples/run_presentation.sh --modes MFRL MBRL ONLINE_MBRL MERL \
-  --sft-checkpoint "$SFT_CHECKPOINT" --wm-checkpoint "$WM_CHECKPOINT" \
-  --steps 6 --training-minutes 15
+bash examples/run_presentation.sh \
+  --modes MFRL MBRL ONLINE_MBRL MERL \
+  --vla-init "$VLA_INIT" --unnorm-key "$UNNORM_KEY" --wm-checkpoint "$WM_INIT" \
+  --tasks 0 --trials 3 --steps 6 --training-minutes 15 \
+  --output outputs/comparison_seed0
 ```
 
-This sequential **exploratory** run uses shorter simulator optimization/inference, saves all requested trials, and builds robot video panels and quantitative summaries under `tmp_files/ppt_runs/`. Time caps are checked between completed stages. It does not guarantee a ranking or completion within two hours. See the [presentation workflow](docs/presentation_pilot.md).
+The comparison runner saves every requested trial, side-by-side videos, contact sheets, `scores.png`, `summary.json` and `trials.csv`. Its evaluation states start at offset 10; each mode records its actual interactions, optimizer updates and elapsed time.
 
-### GT / frozen / updated simulator comparison
+### World-model imagination
 
-Reuse one held-out recorded action sequence for every checkpoint:
+Compare checkpoints against the same held-out observations and recorded actions:
 
 ```bash
 bash scripts/run_logged.sh python -m merl.wm_visual_compare \
-  --episode /outputs/reference/episode.json \
-  --checkpoint MBRL="$WM_CHECKPOINT" \
+  --episode /outputs/heldout/episode.json \
+  --checkpoint MBRL="$WM_INIT" \
   --checkpoint ONLINE_MBRL=/outputs/online/world_model/global_step_5/world_model.pth \
   --checkpoint MERL=/outputs/merl/world_model/global_step_5/world_model.pth \
   --start 64 --horizon 32 --inference-steps 8 --rollout recursive \
-  --output tmp_files/wm_visuals/comparison_001
+  --output outputs/wm_comparison_seed0
 ```
 
-Outputs include a comparison MP4, PNG panels, a contact sheet, prediction/proxy arrays, pixel MSE/PSNR and checkpoint/reference hashes. Models load sequentially on one GPU. Distinct labels require distinct checkpoints. This measures **fixed-action model fidelity**, not closed-loop policy success; trust does not directly sharpen a frozen simulator's images. [Protocol details](docs/online_mbrl_and_wm_visuals.md).
+Outputs include GT and predicted videos, image panels, proxy traces, pixel MSE/PSNR and checkpoint/reference hashes. Models load sequentially on one GPU. Recursive prediction conditions on past and predicted RGB; `--rollout teacher_forced` provides a one-chunk diagnostic using stored real history. [Visualization guide](docs/visualization.md).
 
-## Results and reproducibility
+## Results
 
-The camera-ready paper reports the following component comparison, averaged over its four perturbed suites. These are **paper-reported point estimates**, not newly reproduced release results.
+Component comparison averaged over four perturbed task suites:
 
 | Method | Average SR ↑ | AUC ↑ | S2T-H ↓ |
 | :--- | ---: | ---: | ---: |
@@ -198,34 +218,32 @@ The camera-ready paper reports the following component comparison, averaged over
 | Online-Updated MBRL | 76.2 | 65.4 | 139.6 |
 | MERL | **79.7** | **70.6** | **92.1** |
 
-S2T-H counts refinement stages with interpolated threshold crossings, not seconds or environment transitions. The common interaction allowance is six grounded trajectories and at most 3,072 transitions per stage; actual lengths vary with termination. Physical-robot results use fixed-data adaptation from 50 demonstrations per task and are a separate protocol.
+SR measures task success; AUC summarizes the success-rate learning curve; S2T-H counts refinement stages to the target success threshold with interpolated crossings. Each stage allows six grounded trajectories and at most 3,072 environment transitions.
 
-Each run records the resolved configuration, source hashes, input asset metadata, package versions, devices, command, console logs and final status. Completed stages record actual grounded transitions, calibration interaction count, trust decisions, gradient norms and timings. Full console logs and exit summaries go to `tmp_files/acp_logs/`; `ACP_LOG_DIR` overrides this location. ACP startup performs no Git operation and loads models offline by default.
+## Experiment outputs
+
+Each experiment records its resolved configuration, input assets, source hashes, package versions, devices, command and final status. Stage logs include interaction counts, trust decisions, gradient norms and timings. Checkpoints and rollout artifacts are organized under `checkpoints/<MODE>/<EXPERIMENT>/`.
+
+`scripts/run_logged.sh` streams stdout/stderr to the terminal and saves logs under `tmp_files/acp_logs/`, with exit codes and elapsed time in a matching `.status.json`. Set `ACP_LOG_DIR` to choose another persistent location.
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Passing CPU tests verifies contracts. It does not establish residual accuracy, downstream gains or multi-rank GPU correctness. Current runtime evidence and the outstanding four-GPU validation gate are documented in the [audit](docs/implementation_audit.md).
-
 ## Repository guide
 
 | Path | Purpose |
 | :--- | :--- |
-| `merl/paper*.py` | Camera-ready driver, recursive rollout, simulator adapter and objective contracts |
-| `merl/trust.py`, `merl/stored_calibration.py` | Residual estimation, stored-action calibration and trust equations |
-| `merl/launch.py`, `configs/` | Unified CLI, explicit research defaults and portable asset configuration |
-| `verl/workers/` | Ray/FSDP actors and single simulator worker |
-| `modules/ctrl_world/` | Video predictor, progress classifier and offline pretraining |
-| `real_world/` | Separate physical-data WM training/inference tools |
-| `examples/`, `scripts/` | Thin entrypoints, logging, asset checks and artifact analysis |
-| `tests/`, `docs/` | Contract tests, protocols and verification limits |
-
-The public simulation entrypoint does not drive a physical robot. Physical-world WM tools are separate; they do not by themselves reproduce the paper's complete fixed-data policy adaptation. External baseline repositories, private manuscripts, datasets, weights and generated experiment artifacts are excluded.
-
-## Release metadata
-
-Before announcing the final public release, the authors need to provide the public paper/project URLs, downloadable initial/refined model assets, demonstration-video links and a root license for MERL's own contributions. Third-party license notices are retained; they do not select MERL's root license. Original full experiment configurations are also needed for exact numerical reproduction.
+| `merl/algorithm.py`, `merl/trainer.py` | Configuration, objectives and refinement stages |
+| `merl/simulator.py`, `merl/imagined_rollout.py` | Simulator adaptation and recursive policy imagination |
+| `merl/trust.py`, `merl/stored_calibration.py` | Residual prediction and stage/chunk trust |
+| `merl/train_simulator.py` | Initial simulator and proxy training |
+| `merl/launch.py`, `configs/` | Training, evaluation, collection and runtime configuration |
+| `verl/workers/` | Distributed actors and shared simulator worker |
+| `modules/ctrl_world/` | Video predictor and progress classifier |
+| `real_world/` | Robot-video prediction and HDF5 simulator training |
+| `examples/`, `scripts/` | Run wrappers, logging, asset preparation and analysis |
+| `tests/`, `docs/` | Contract tests and usage guides |
 
 ## Citation
 
@@ -240,4 +258,4 @@ Before announcing the final public release, the authors need to provide the publ
 
 ## Acknowledgments
 
-MERL builds on the VLA-RL training stack, OpenVLA-OFT, Ctrl-World, LIBERO-PRO, Ray and PyTorch. We thank their authors and maintain the original notices in vendored source. Consult each upstream project's terms for its code, datasets and model weights.
+MERL builds on VLA-RL, OpenVLA-OFT, Ctrl-World, LIBERO-PRO, Ray and PyTorch. We thank their authors and retain the original notices in vendored source. Refer to each upstream project's terms for its code, datasets and model weights.

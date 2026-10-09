@@ -4141,23 +4141,26 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
             batch_size,
             max_steps,
         )
-        if meta_info.get("paper_grounded_dir"):
-            from merl.paper import save_grounded_trajectory
+        export_dir = meta_info.get("grounded_export_dir") or self.config.get("grounded_export_dir")
+        if export_dir:
+            from merl.algorithm import save_grounded_trajectory
             import hashlib
             paths = []
             for index, (record, video) in enumerate(zip(task_records, video_records)):
                 if record.get("placeholder_reason") or record.get("is_dummy"):
-                    raise RuntimeError(f"Incomplete camera-ready grounded trajectory: {record}")
+                    raise RuntimeError(f"Incomplete MERL grounded trajectory: {record}")
                 if len(video["executed_actions"]) != int(record["finish_step"]):
                     raise RuntimeError("Executed-action count disagrees with environment transition count")
-                uid = str(output.non_tensor_batch["uid"][index])
+                uids = output.non_tensor_batch.get("uid")
+                uid = (str(uids[index]) if uids is not None else
+                       f"{task_suite_name[index]}/task:{int(task_id[index].item())}/trial:{int(trial_id[index].item())}")
                 name = hashlib.sha256(f"{uid}/{index}".encode()).hexdigest()[:16]
-                path = Path(meta_info["paper_grounded_dir"]) / f"stage_{global_steps:06d}" / f"{name}.npz"
+                path = Path(export_dir) / f"stage_{global_steps:06d}" / f"{name}.npz"
                 paths.append(save_grounded_trajectory(
                     path, observations=video["env_images"], executed_actions=video["executed_actions"],
                     instruction=task_descriptions[index], success=record["complete"],
                     task_id=int(task_id[index].item()), trial_id=int(trial_id[index].item()), stage=global_steps))
-            output.non_tensor_batch["paper_trajectory_path"] = np.asarray(paths, dtype=object)
+            output.non_tensor_batch["trajectory_path"] = np.asarray(paths, dtype=object)
         return output
 
     def _preprocess_img(self, img: np.ndarray) -> torch.Tensor:
@@ -6922,8 +6925,19 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
                 prompts.non_tensor_batch["task_suite_name"][
                     idx
                 ] = generated_task_suite_name
-            # Step 2: Handle the case when only one use_xxx flag is True
-            else:  # <= 1
+            elif not any((use_swap, use_object, use_language, use_task, use_environment)):
+                # Original environments use their existing benchmark assets.
+                bddl_file_path = os.path.join(evaluation_cfg.get("bddl_files_path", ""), raw_task_suite_name)
+                init_file_path = os.path.join(evaluation_cfg.get("init_file_dir", ""), raw_task_suite_name)
+                assets_ok, assets_reason = validate_suite_assets(
+                    bddl_dir=bddl_file_path, init_dir=init_file_path,
+                    generated_task_suite_name=raw_task_suite_name,
+                )
+                if not assets_ok:
+                    raise FileNotFoundError(f"Missing original LIBERO assets: {assets_reason}")
+                prompts.non_tensor_batch["task_suite_name"][idx] = raw_task_suite_name
+            # One active perturbation selects its corresponding generated suite.
+            else:
                 print(
                     "[LIBERO PRO]: Step 1-2: Handle the case when only one use_xxx flag is True"
                 )
@@ -6941,7 +6955,7 @@ class RobWMHFRolloutPro(BaseRollout):  #! tmp：跑通后记得改回RobWMHFRoll
                     raise ValueError("Must use one perturb type.")
                 evaluation_cfg["perturb_flag"] = perturb_key
 
-                #! env 就是 temp，暂时缺少 env 的，要自己生成
+                # Match the selected perturbation to its benchmark suite.
                 perturb_suffix = evaluation_cfg.get("perturbation_mapping", {}).get(
                     perturb_key, ""
                 )
