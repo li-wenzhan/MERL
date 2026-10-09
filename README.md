@@ -3,15 +3,15 @@
 # Trust-Calibrated VLA Policy Post-Training with Evolving Imagination
 
 <p>
-  Wenzhan Li<sup>1,2</sup> &nbsp; Yiran Qin<sup>3,4</sup> &nbsp; Heng Zhou<sup>4,5</sup><br>
-  Huirui Wang<sup>1</sup> &nbsp; Yulan Guo<sup>1,2</sup> &nbsp; Ruimao Zhang<sup>1,&dagger;</sup>
+  Wenzhan Li<sup>1,2</sup> &nbsp; Yiran Qin<sup>3,4,5</sup> &nbsp; Heng Zhou<sup>4,6</sup> &nbsp; Huirui Wang<sup>1</sup><br>
+  Yulan Guo<sup>1,2</sup> &nbsp; Ruimao Zhang<sup>1 *</sup>
 </p>
 <p>
   <sup>1</sup>Sun Yat-sen University &nbsp; <sup>2</sup>Shenzhen Loop Area Institute<br>
-  <sup>3</sup>The Chinese University of Hong Kong, Shenzhen<br>
-  <sup>4</sup>Shanghai AI Laboratory &nbsp; <sup>5</sup>University of Science and Technology of China
+  <sup>3</sup>The Chinese University of Hong Kong, Shenzhen &nbsp; <sup>4</sup>Shanghai AI Laboratory<br>
+  <sup>5</sup>University of Oxford &nbsp; <sup>6</sup>University of Science and Technology of China
 </p>
-<!-- <p><sup>&dagger;</sup>Corresponding author: <a href="mailto:zhangrm27@mail.sysu.edu.cn">Ruimao Zhang</a></p> -->
+<!-- <p><sup>*;</sup>Corresponding author: <a href="mailto:zhangrm27@mail.sysu.edu.cn">Ruimao Zhang</a></p> -->
 
 <p>
   <a href="https://www.corl.org/"><img alt="CoRL 2026" src="https://img.shields.io/badge/CoRL-2026-1d4ed8"></a>
