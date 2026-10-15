@@ -1,6 +1,10 @@
 <div align="center">
 
-# Trust-Calibrated VLA Policy Post-Training with Evolving Imagination
+<a href="https://li-wenzhan.github.io/MERL-project/">
+  <img src="assets/readme/banner.svg" width="100%" alt="MERL. Learning to trust imagination. Model-Evolving Reinforcement Learning, CoRL 2026.">
+</a>
+
+<h1>Trust-Calibrated VLA Policy Post-Training<br> with Evolving Imagination</h1>
 
 <p>
   Wenzhan Li<sup>1,2</sup> &nbsp; Yiran Qin<sup>3,4,5</sup> &nbsp; Heng Zhou<sup>4,6</sup> &nbsp; Huirui Wang<sup>1</sup><br>
@@ -11,27 +15,28 @@
   <sup>3</sup>The Chinese University of Hong Kong, Shenzhen &nbsp; <sup>4</sup>Shanghai AI Laboratory<br>
   <sup>5</sup>University of Oxford &nbsp; <sup>6</sup>University of Science and Technology of China
 </p>
-<!-- <p><sup>*;</sup>Corresponding author: <a href="mailto:zhangrm27@mail.sysu.edu.cn">Ruimao Zhang</a></p> -->
 
 <p>
-  <a href="https://www.corl.org/"><img alt="CoRL 2026" src="https://img.shields.io/badge/CoRL-2026-1d4ed8"></a>
-  <a href="https://arxiv.org/search/?query=Trust-Calibrated+VLA+Policy+Post-Training+with+Evolving+Imagination&amp;searchtype=title" title="arXiv publication coming soon; search by title"><img alt="arXiv: coming soon" src="https://img.shields.io/badge/arXiv-coming%20soon-b31b1b?logo=arxiv&amp;logoColor=white"></a>
-  <a href="https://docs.python.org/3.10/"><img alt="Python 3.10" src="https://img.shields.io/badge/Python-3.10-3776ab?logo=python&amp;logoColor=white"></a>
-  <a href="https://docs.pytorch.org/docs/stable/fsdp.html"><img alt="PyTorch FSDP" src="https://img.shields.io/badge/PyTorch-FSDP-ee4c2c?logo=pytorch&amp;logoColor=white"></a>
-  <a href="https://docs.nvidia.com/cuda/cuda-installation-guide-linux/"><img alt="Linux CUDA" src="https://img.shields.io/badge/Platform-Linux%20%7C%20CUDA-334155"></a>
-  <a href="https://github.com/li-wenzhan/MERL"><img alt="Code" src="https://img.shields.io/badge/Code-GitHub-181717?logo=github"></a>
+  <a href="https://www.corl.org/"><img src="https://img.shields.io/badge/CoRL-2026-92278F?style=for-the-badge&amp;labelColor=291C32" alt="CoRL 2026"></a>
+  <a href="https://arxiv.org/abs/2610.16517"><img src="https://img.shields.io/badge/arXiv-2610.16517-C82E70?style=for-the-badge&amp;labelColor=291C32&amp;logo=arxiv&amp;logoColor=white" alt="Paper: arXiv 2610.16517"></a>
+  <a href="https://li-wenzhan.github.io/MERL-project/"><img src="https://img.shields.io/badge/Project-Explore-92278F?style=for-the-badge&amp;labelColor=291C32" alt="Explore the interactive project page"></a>
+  <a href="https://github.com/li-wenzhan/MERL"><img src="https://img.shields.io/badge/Code-GitHub-C82E70?style=for-the-badge&amp;labelColor=291C32&amp;logo=github&amp;logoColor=white" alt="MERL implementation on GitHub"></a>
 </p>
+
+**A world model can imagine. MERL learns how much to trust it.**
+
 <p>
-  <a href="#overview">Overview</a> &nbsp;|&nbsp;
-  <a href="#method">Method</a> &nbsp;|&nbsp;
-  <a href="#installation">Installation</a> &nbsp;|&nbsp;
-  <a href="#training">Training</a> &nbsp;|&nbsp;
-  <a href="#evaluation-and-visualization">Evaluation &amp; Visualization</a> &nbsp;|&nbsp;
+  <a href="#overview">Overview</a> &nbsp;·&nbsp;
+  <a href="#robot-demos">Robot demos</a> &nbsp;·&nbsp;
+  <a href="#method">Method</a> &nbsp;·&nbsp;
+  <a href="#results">Results</a> &nbsp;·&nbsp;
+  <a href="#installation">Installation</a> &nbsp;·&nbsp;
+  <a href="#training">Training</a> &nbsp;·&nbsp;
+  <a href="#evaluation-and-visualization">Evaluation</a> &nbsp;·&nbsp;
   <a href="#citation">Citation</a>
 </p>
-</div>
 
-**MERL couples VLA policy refinement with an evolving visual simulator and a grounded reward proxy. Stage-level reliability controls how much and how far to imagine; chunk-level trust controls which imagined experience contributes to policy optimization.**
+</div>
 
 ## Overview
 
@@ -39,13 +44,49 @@ MERL uses grounded experience to improve both its policy and its simulator. It c
 
 The implementation combines tokenized [**OpenVLA-OFT**](https://github.com/moojink/openvla-oft), [**Ctrl-World**](https://github.com/Robert-gyj/Ctrl-World), [**LIBERO-PRO**](https://github.com/Zxy-MLlab/LIBERO-PRO), [Ray](https://docs.ray.io/en/latest/index.html) and [FSDP](https://docs.pytorch.org/docs/stable/fsdp.html). This repository provides the training loop, component controls, evaluation, resumable checkpoints, and tools for robot videos and simulator comparisons.
 
+<table align="center">
+<tr>
+<td align="center" width="33%"><h3>79.7%</h3><b>LIBERO-PRO success</b><br><sub>Four suites · three training seeds</sub></td>
+<td align="center" width="34%"><h3>10.9% fewer</h3><b>High-threshold stages</b><br><sub>Versus the matched model-free control</sub></td>
+<td align="center" width="33%"><h3>80.0%</h3><b>Observed robot success</b><br><sub>32 / 40 trials · fixed-data refinement</sub></td>
+</tr>
+</table>
+
+**Try the research:** [explore the trust lab](https://li-wenzhan.github.io/MERL-project/#trust), [inspect imagined futures](https://li-wenzhan.github.io/MERL-project/#imagination), or [watch the robots](https://li-wenzhan.github.io/MERL-project/#robots).
+
+## Robot demos
+
+Real MERL-Full executions on AgileX PiPER X. Click a rollout to open the full-resolution video gallery.
+
+<table>
+<tr><th align="center">Block-to-Box</th><th align="center">Lid-to-Pot</th></tr>
+<tr>
+<td width="50%"><a href="https://li-wenzhan.github.io/MERL-project/#robots"><img src="assets/readme/block-merl.gif" width="100%" alt="MERL-Full closes its gripper around a block and places it in the box. Original two-times-speed physical rollout."></a></td>
+<td width="50%"><a href="https://li-wenzhan.github.io/MERL-project/#robots"><img src="assets/readme/lid-merl.gif" width="100%" alt="MERL-Full grasps a lid and places it onto the pot. Original two-times-speed physical rollout."></a></td>
+</tr>
+<tr><td align="center"><b>17 / 20</b> successful evaluation trials</td><td align="center"><b>15 / 20</b> successful evaluation trials</td></tr>
+</table>
+
+<sub>Qualitative examples at 2× physical-time playback; the original speed marks are retained. Evaluation uses held-out placements and colors after offline refinement from 50 demonstrations per task, without extra physical training rollouts.</sub>
+
 ## Method
 
-<div align="center">
-  <img src="assets/merl_overview.png" width="100%" alt="MERL: policy rollout, stored grounded-imagined calibration, stage-level trust, chunk-level trust and mixed optimization">
-</div>
+**Update the simulator. Then calibrate how its imagination shapes learning.**
 
-The five panels above describe each refinement stage:
+An adapting world model can still produce uneven imagined chunks. MERL turns estimated reliability into four explicit decisions:
+
+<p align="center">
+  <a href="https://li-wenzhan.github.io/MERL-project/#trust"><picture><source media="(max-width: 640px)" srcset="assets/readme/trust-compass-mobile.svg"><img src="assets/readme/trust-compass.svg" width="100%" alt="Four trust decisions: stage-level loss mixing rho and rollout horizon h; chunk-level replay probability p and optimization weight w."></picture></a>
+</p>
+
+Stage-level trust controls the imagined loss contribution and horizon. Chunk-level trust controls selection and influence after sampling. A frozen residual predictor scores recursive imagination **without querying future ground truth**.
+
+<details>
+<summary><b>Open the complete pipeline and five-step refinement cycle</b></summary>
+
+<p align="center">
+  <a href="https://li-wenzhan.github.io/MERL-project/#method"><img src="assets/merl_overview.png" width="100%" alt="Original MERL pipeline: grounded rollout, stored-action calibration, stage scheduling, chunk trust and mixed policy optimization."></a>
+</p>
 
 1. **Policy rollout.** Collect six grounded trajectories with the current VLA policy. Decode and denormalize categorical tokens into 8-step, 7-dimensional action chunks; store the executed commands with their preceding and resulting RGB observations.
 2. **Stored grounded-imagined calibration.** Update the world model and progress proxy on stored grounded windows. Replay the same recorded actions to obtain matched predictions and residual targets, then refresh the residual predictor. Calibration uses the stored observations and masks without additional environment interaction.
@@ -63,7 +104,57 @@ The five panels above describe each refinement stage:
 
 All modes share the grounded budget, actor optimizer, action representation and evaluation interface. See [training details](docs/training.md) and [no-oracle trust](docs/no_oracle_trust.md).
 
+</details>
+
+## Results
+
+### LIBERO-PRO · same-protocol comparisons
+
+Mean ± standard deviation over **three training seeds**, averaged across Spatial, Object, Goal and Long. Task semantics stay fixed while deployment conditions change.
+
+| Method | Average SR (%) ↑ | AUC ↑ | S2T-H ↓ |
+| :--- | ---: | ---: | ---: |
+| SimpleVLA-RL | 77.1 ± 1.1 | 67.8 ± 1.0 | 104.1 ± 7.0 |
+| WMPO† | 75.4 ± 1.2 | 63.2 ± 1.3 | 149.6 ± 10.2 |
+| WoVR† | 77.8 ± 0.9 | 68.4 ± 0.9 | 101.3 ± 6.2 |
+| **MERL** | **79.7 ± 0.7** | **70.6 ± 0.8** | **92.1 ± 4.8** |
+
+<sub>† Baselines adapted to the same training/evaluation protocol; each WoVR seed has an independent simulator. AUC is normalized learning-curve area. S2T-H averages stages to 80% success on Spatial/Object/Goal and 65% on Long.</sub>
+
+<details>
+<summary><b>Matched component controls and budget accounting</b></summary>
+
+Component comparison averaged over four perturbed task suites:
+
+| Method | Average SR ↑ | AUC ↑ | S2T-H ↓ |
+| :--- | ---: | ---: | ---: |
+| MFRL | 77.2 | 67.9 | 103.4 |
+| Static-MBRL | 73.3 | 59.8 | 168.9 |
+| Static-MBRL + Trust | 75.1 | 63.5 | 145.8 |
+| Online-Updated MBRL | 76.2 | 65.4 | 139.6 |
+| MERL | **79.7** | **70.6** | **92.1** |
+
+SR measures task success; AUC summarizes the success-rate learning curve; S2T-H counts refinement stages to the target success threshold with interpolated crossings. Each stage allows six grounded trajectories and at most 3,072 environment transitions.
+
+The **10.9% reduction** is `(103.4 − 92.1) / 103.4` against the matched MFRL control. Imagination and simulator updates add model computation; fewer refinement stages do not imply the same percentage of wall-clock speedup.
+
+</details>
+
+### Physical deployment · fixed data, closed-loop evaluation
+
+MERL-Full achieves **80.0%** observed average success (32/40; **95% CI [65.2, 89.5]**). MERL-Visual achieves 77.5% (31/40); overlapping confidence intervals do not resolve a proxy-only gain. These experiments cover two tabletop tasks and offline refinement.
+
+[See the interactive results](https://li-wenzhan.github.io/MERL-project/#results) · [Read the experimental protocol](https://arxiv.org/abs/2610.16517)
+
+---
+
 ## Installation
+
+<p>
+  <img src="https://img.shields.io/badge/Python-3.10-92278F?logo=python&amp;logoColor=white&amp;labelColor=291C32" alt="Python 3.10">
+  <img src="https://img.shields.io/badge/PyTorch-FSDP-C82E70?logo=pytorch&amp;logoColor=white&amp;labelColor=291C32" alt="PyTorch FSDP">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20CUDA-92278F?labelColor=291C32" alt="Linux and CUDA">
+</p>
 
 Use **Linux, Python 3.10, CUDA PyTorch/torchvision, NCCL, EGL and ffmpeg**. Policy training uses three actor GPUs; model-based modes add a fourth GPU for the shared simulator. A node with **4 × H100 80 GB** supports this layout. Simulator initialization and video comparison use one GPU.
 
@@ -207,20 +298,6 @@ bash scripts/run_logged.sh python -m merl.wm_visual_compare \
 
 Outputs include GT and predicted videos, image panels, proxy traces, pixel MSE/PSNR and checkpoint/reference hashes. Models load sequentially on one GPU. Recursive prediction conditions on past and predicted RGB; `--rollout teacher_forced` provides a one-chunk diagnostic using stored real history. [Visualization guide](docs/visualization.md).
 
-## Results
-
-Component comparison averaged over four perturbed task suites:
-
-| Method | Average SR ↑ | AUC ↑ | S2T-H ↓ |
-| :--- | ---: | ---: | ---: |
-| MFRL | 77.2 | 67.9 | 103.4 |
-| Static-MBRL | 73.3 | 59.8 | 168.9 |
-| Static-MBRL + Trust | 75.1 | 63.5 | 145.8 |
-| Online-Updated MBRL | 76.2 | 65.4 | 139.6 |
-| MERL | **79.7** | **70.6** | **92.1** |
-
-SR measures task success; AUC summarizes the success-rate learning curve; S2T-H counts refinement stages to the target success threshold with interpolated crossings. Each stage allows six grounded trajectories and at most 3,072 environment transitions.
-
 ## Experiment outputs
 
 Each experiment records its resolved configuration, input assets, source hashes, package versions, devices, command and final status. Stage logs include interaction counts, trust decisions, gradient norms and timings. Checkpoints and rollout artifacts are organized under `checkpoints/<MODE>/<EXPERIMENT>/`.
@@ -248,15 +325,26 @@ python -m unittest discover -s tests -v
 
 ## Citation
 
+The [arXiv preprint](https://arxiv.org/abs/2610.16517) is available now. CoRL 2026 proceedings are forthcoming.
+
 ```bibtex
-@inproceedings{li2026merl,
-  title     = {Trust-Calibrated VLA Policy Post-Training with Evolving Imagination},
-  author    = {Li, Wenzhan and Qin, Yiran and Zhou, Heng and Wang, Huirui and Guo, Yulan and Zhang, Ruimao},
-  booktitle = {Conference on Robot Learning},
-  year      = {2026}
+@misc{li2026merl,
+  title         = {Trust-Calibrated VLA Policy Post-Training with Evolving Imagination},
+  author        = {Li, Wenzhan and Qin, Yiran and Zhou, Heng and Wang, Huirui and Guo, Yulan and Zhang, Ruimao},
+  year          = {2026},
+  eprint        = {2610.16517},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.RO},
+  url           = {https://arxiv.org/abs/2610.16517}
 }
 ```
 
 ## Acknowledgments
 
 MERL builds on [VLA-RL](https://github.com/GuanxingLu/vlarl), [OpenVLA-OFT](https://github.com/moojink/openvla-oft), [Ctrl-World](https://github.com/Robert-gyj/Ctrl-World), [LIBERO-PRO](https://github.com/Zxy-MLlab/LIBERO-PRO), [Ray](https://docs.ray.io/en/latest/index.html) and [PyTorch](https://pytorch.org/). We thank their authors and retain the original notices in vendored source. Refer to each upstream project's terms for its code, datasets and model weights.
+
+<p align="center">
+  <a href="https://li-wenzhan.github.io/MERL-project/"><b>Explore MERL</b></a> &nbsp;·&nbsp;
+  <a href="https://arxiv.org/abs/2610.16517">Read the paper</a> &nbsp;·&nbsp;
+  <a href="#installation">Start an experiment</a>
+</p>
