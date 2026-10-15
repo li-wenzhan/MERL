@@ -17,10 +17,10 @@
 </p>
 
 <p>
-  <a href="https://www.corl.org/"><img src="https://img.shields.io/badge/CoRL-2026-92278F?style=for-the-badge&amp;labelColor=291C32" alt="CoRL 2026"></a>
-  <a href="https://arxiv.org/abs/2610.16517"><img src="https://img.shields.io/badge/arXiv-2610.16517-C82E70?style=for-the-badge&amp;labelColor=291C32&amp;logo=arxiv&amp;logoColor=white" alt="Paper: arXiv 2610.16517"></a>
-  <a href="https://merl-project.github.io/"><img src="https://img.shields.io/badge/Project-Explore-92278F?style=for-the-badge&amp;labelColor=291C32" alt="Explore the interactive project page"></a>
-  <a href="https://github.com/li-wenzhan/MERL"><img src="https://img.shields.io/badge/Code-GitHub-C82E70?style=for-the-badge&amp;labelColor=291C32&amp;logo=github&amp;logoColor=white" alt="MERL implementation on GitHub"></a>
+  <a href="https://www.corl.org/"><img src="https://img.shields.io/badge/CoRL-2026-BF5700?style=for-the-badge&amp;labelColor=71380D" height="28" alt="CoRL 2026"></a>
+  <a href="https://arxiv.org/abs/2610.16517"><img src="https://img.shields.io/badge/arXiv-2610.16517-B31B1B?style=for-the-badge&amp;labelColor=6F1111&amp;logo=arxiv&amp;logoColor=white" height="28" alt="Paper: arXiv 2610.16517"></a>
+  <a href="https://merl-project.github.io/"><img src="https://img.shields.io/badge/Project-Explore-92278F?style=for-the-badge&amp;labelColor=291C32" height="28" alt="Explore the interactive project page"></a>
+  <a href="https://github.com/li-wenzhan/MERL"><img src="https://img.shields.io/badge/Code-GitHub-181717?style=for-the-badge&amp;labelColor=30363D&amp;logo=github&amp;logoColor=white" height="28" alt="MERL implementation on GitHub"></a>
 </p>
 
 **A world model can imagine. MERL learns how much to trust it.**
