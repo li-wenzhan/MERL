@@ -325,7 +325,7 @@ python -m unittest discover -s tests -v
 
 ## Citation
 
-The [arXiv preprint](https://arxiv.org/abs/2610.16517) is available now. CoRL 2026 proceedings are forthcoming.
+If you find MERL helpful in your research, please consider [giving this repository a ⭐](https://github.com/li-wenzhan/MERL) and citing our paper. Thank you for your interest and support!
 
 ```bibtex
 @misc{li2026merl,
@@ -338,6 +338,8 @@ The [arXiv preprint](https://arxiv.org/abs/2610.16517) is available now. CoRL 20
   url           = {https://arxiv.org/abs/2610.16517}
 }
 ```
+
+The BibTeX entry above refers to the [arXiv preprint](https://arxiv.org/abs/2610.16517). We will add the official **CoRL 2026 / PMLR** citation once the proceedings are published.
 
 ## Acknowledgments
 
