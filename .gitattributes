@@ -1,6 +1,32 @@
-# Keep executable text portable between Windows CCI tooling and Linux ACP.
+# Keep text consistent between Windows development and Linux training.
+# Policy changes must include existing blobs: git add --renormalize .
+* text=auto eol=lf
+
+# Treat source and structured text as text even when auto-detection is ambiguous.
 *.sh text eol=lf
 *.py text eol=lf
 *.json text eol=lf
 *.yaml text eol=lf
 *.md text eol=lf
+
+# Native Windows command scripts keep their required checkout format.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never apply newline conversion to research media, checkpoints or archives.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.mp4 binary
+*.mov binary
+*.webm binary
+*.pth binary
+*.pt binary
+*.ckpt binary
+*.npy binary
+*.npz binary
+*.zip binary
+*.gz binary
