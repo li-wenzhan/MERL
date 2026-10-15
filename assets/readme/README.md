@@ -7,7 +7,7 @@ Manrope glyphs, so they retain their appearance without external fonts, scripts,
 SVG animation or embedded HTML.
 
 The two GIFs use the original MERL-Full videos prepared for the
-[project website](https://li-wenzhan.github.io/MERL-project/#robots). They retain
+[project website](https://merl-project.github.io/#robots). They retain
 the complete source chronology and the visible **2× physical-time playback**
 mark. Conversion uses 440-pixel width, 8 fps and a 128-color palette. Only spatial
 resolution, frame sampling and color quantization change; the clips are not

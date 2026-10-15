@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://li-wenzhan.github.io/MERL-project/">
+<a href="https://merl-project.github.io/">
   <img src="assets/readme/banner.svg" width="100%" alt="MERL. Learning to trust imagination. Model-Evolving Reinforcement Learning, CoRL 2026.">
 </a>
 
@@ -19,7 +19,7 @@
 <p>
   <a href="https://www.corl.org/"><img src="https://img.shields.io/badge/CoRL-2026-92278F?style=for-the-badge&amp;labelColor=291C32" alt="CoRL 2026"></a>
   <a href="https://arxiv.org/abs/2610.16517"><img src="https://img.shields.io/badge/arXiv-2610.16517-C82E70?style=for-the-badge&amp;labelColor=291C32&amp;logo=arxiv&amp;logoColor=white" alt="Paper: arXiv 2610.16517"></a>
-  <a href="https://li-wenzhan.github.io/MERL-project/"><img src="https://img.shields.io/badge/Project-Explore-92278F?style=for-the-badge&amp;labelColor=291C32" alt="Explore the interactive project page"></a>
+  <a href="https://merl-project.github.io/"><img src="https://img.shields.io/badge/Project-Explore-92278F?style=for-the-badge&amp;labelColor=291C32" alt="Explore the interactive project page"></a>
   <a href="https://github.com/li-wenzhan/MERL"><img src="https://img.shields.io/badge/Code-GitHub-C82E70?style=for-the-badge&amp;labelColor=291C32&amp;logo=github&amp;logoColor=white" alt="MERL implementation on GitHub"></a>
 </p>
 
@@ -52,7 +52,7 @@ The implementation combines tokenized [**OpenVLA-OFT**](https://github.com/mooji
 </tr>
 </table>
 
-**Try the research:** [explore the trust lab](https://li-wenzhan.github.io/MERL-project/#trust), [inspect imagined futures](https://li-wenzhan.github.io/MERL-project/#imagination), or [watch the robots](https://li-wenzhan.github.io/MERL-project/#robots).
+**Try the research:** [explore the trust lab](https://merl-project.github.io/#trust), [inspect imagined futures](https://merl-project.github.io/#imagination), or [watch the robots](https://merl-project.github.io/#robots).
 
 ## Robot demos
 
@@ -61,8 +61,8 @@ Real MERL-Full executions on AgileX PiPER X. Click a rollout to open the full-re
 <table>
 <tr><th align="center">Block-to-Box</th><th align="center">Lid-to-Pot</th></tr>
 <tr>
-<td width="50%"><a href="https://li-wenzhan.github.io/MERL-project/#robots"><img src="assets/readme/block-merl.gif" width="100%" alt="MERL-Full closes its gripper around a block and places it in the box. Original two-times-speed physical rollout."></a></td>
-<td width="50%"><a href="https://li-wenzhan.github.io/MERL-project/#robots"><img src="assets/readme/lid-merl.gif" width="100%" alt="MERL-Full grasps a lid and places it onto the pot. Original two-times-speed physical rollout."></a></td>
+<td width="50%"><a href="https://merl-project.github.io/#robots"><img src="assets/readme/block-merl.gif" width="100%" alt="MERL-Full closes its gripper around a block and places it in the box. Original two-times-speed physical rollout."></a></td>
+<td width="50%"><a href="https://merl-project.github.io/#robots"><img src="assets/readme/lid-merl.gif" width="100%" alt="MERL-Full grasps a lid and places it onto the pot. Original two-times-speed physical rollout."></a></td>
 </tr>
 <tr><td align="center"><b>17 / 20</b> successful evaluation trials</td><td align="center"><b>15 / 20</b> successful evaluation trials</td></tr>
 </table>
@@ -76,7 +76,7 @@ Real MERL-Full executions on AgileX PiPER X. Click a rollout to open the full-re
 An adapting world model can still produce uneven imagined chunks. MERL turns estimated reliability into four explicit decisions:
 
 <p align="center">
-  <a href="https://li-wenzhan.github.io/MERL-project/#trust"><picture><source media="(max-width: 640px)" srcset="assets/readme/trust-compass-mobile.svg"><img src="assets/readme/trust-compass.svg" width="100%" alt="Four trust decisions: stage-level loss mixing rho and rollout horizon h; chunk-level replay probability p and optimization weight w."></picture></a>
+  <a href="https://merl-project.github.io/#trust"><picture><source media="(max-width: 640px)" srcset="assets/readme/trust-compass-mobile.svg"><img src="assets/readme/trust-compass.svg" width="100%" alt="Four trust decisions: stage-level loss mixing rho and rollout horizon h; chunk-level replay probability p and optimization weight w."></picture></a>
 </p>
 
 Stage-level trust controls the imagined loss contribution and horizon. Chunk-level trust controls selection and influence after sampling. A frozen residual predictor scores recursive imagination **without querying future ground truth**.
@@ -85,7 +85,7 @@ Stage-level trust controls the imagined loss contribution and horizon. Chunk-lev
 <summary><b>Open the complete pipeline and five-step refinement cycle</b></summary>
 
 <p align="center">
-  <a href="https://li-wenzhan.github.io/MERL-project/#method"><img src="assets/merl_overview.png" width="100%" alt="Original MERL pipeline: grounded rollout, stored-action calibration, stage scheduling, chunk trust and mixed policy optimization."></a>
+  <a href="https://merl-project.github.io/#method"><img src="assets/merl_overview.png" width="100%" alt="Original MERL pipeline: grounded rollout, stored-action calibration, stage scheduling, chunk trust and mixed policy optimization."></a>
 </p>
 
 1. **Policy rollout.** Collect six grounded trajectories with the current VLA policy. Decode and denormalize categorical tokens into 8-step, 7-dimensional action chunks; store the executed commands with their preceding and resulting RGB observations.
@@ -144,7 +144,7 @@ The **10.9% reduction** is `(103.4 − 92.1) / 103.4` against the matched MFRL c
 
 MERL-Full achieves **80.0%** observed average success (32/40; **95% CI [65.2, 89.5]**). MERL-Visual achieves 77.5% (31/40); overlapping confidence intervals do not resolve a proxy-only gain. These experiments cover two tabletop tasks and offline refinement.
 
-[See the interactive results](https://li-wenzhan.github.io/MERL-project/#results) · [Read the experimental protocol](https://arxiv.org/abs/2610.16517)
+[See the interactive results](https://merl-project.github.io/#results) · [Read the experimental protocol](https://arxiv.org/abs/2610.16517)
 
 ---
 
@@ -344,7 +344,7 @@ The [arXiv preprint](https://arxiv.org/abs/2610.16517) is available now. CoRL 20
 MERL builds on [VLA-RL](https://github.com/GuanxingLu/vlarl), [OpenVLA-OFT](https://github.com/moojink/openvla-oft), [Ctrl-World](https://github.com/Robert-gyj/Ctrl-World), [LIBERO-PRO](https://github.com/Zxy-MLlab/LIBERO-PRO), [Ray](https://docs.ray.io/en/latest/index.html) and [PyTorch](https://pytorch.org/). We thank their authors and retain the original notices in vendored source. Refer to each upstream project's terms for its code, datasets and model weights.
 
 <p align="center">
-  <a href="https://li-wenzhan.github.io/MERL-project/"><b>Explore MERL</b></a> &nbsp;·&nbsp;
+  <a href="https://merl-project.github.io/"><b>Explore MERL</b></a> &nbsp;·&nbsp;
   <a href="https://arxiv.org/abs/2610.16517">Read the paper</a> &nbsp;·&nbsp;
   <a href="#installation">Start an experiment</a>
 </p>
